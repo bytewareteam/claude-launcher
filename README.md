@@ -1,4 +1,4 @@
-<p align="center"><img src="apps/claude-launcher/src/renderer/src/assets/logo.svg" width="128" alt="Logo de Claude Launcher"></p>
+<p align="center"><img src="packages/design-tokens/logo.svg" width="128" alt="Logo de Claude Launcher"></p>
 
 # Claude Launcher
 
