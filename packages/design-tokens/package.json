@@ -1,0 +1,33 @@
+{
+  "name": "@claude-launcher/design-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Design tokens compartidos (colores, radios, fuentes y logo) de Claude Launcher.",
+  "type": "module",
+  "main": "./tokens.js",
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./theme.css": "./theme.css",
+    "./tokens.js": "./tokens.js",
+    "./logo.svg": "./logo.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "tokens.css",
+    "theme.css",
+    "tokens.js",
+    "logo.svg"
+  ],
+  "scripts": {
+    "build": "node scripts/build.js"
+  },
+  "nx": {
+    "targets": {
+      "build": {
+        "inputs": ["{projectRoot}/tokens.js", "{projectRoot}/scripts/build.js"],
+        "outputs": ["{projectRoot}/tokens.css", "{projectRoot}/theme.css"]
+      }
+    }
+  }
+}

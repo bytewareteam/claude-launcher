@@ -17,7 +17,7 @@ import { useAskVault } from '@/components/VaultProvider'
 import { api } from '@/lib/api'
 import { useAction, useVaultStatus } from '@/lib/queries'
 import { cn } from '@/lib/utils'
-import logo from '@/assets/logo.svg'
+import logo from '@claude-launcher/design-tokens/logo.svg'
 
 const navItem = (active) =>
   cn(
