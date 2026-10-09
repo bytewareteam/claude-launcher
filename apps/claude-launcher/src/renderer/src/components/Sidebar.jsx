@@ -17,6 +17,7 @@ import { useAskVault } from '@/components/VaultProvider'
 import { api } from '@/lib/api'
 import { useAction, useVaultStatus } from '@/lib/queries'
 import { cn } from '@/lib/utils'
+import logo from '@/assets/logo.svg'
 
 const navItem = (active) =>
   cn(
@@ -34,7 +35,9 @@ export function Sidebar({ projects, selectedId, onSelect, onSearch, newProjectOp
 
   return (
     <aside className="flex min-h-0 flex-col border-r bg-sidebar">
-      <header className="px-4 pt-5 pb-3 font-bold tracking-wide text-primary">Claude Launcher</header>
+      <header className="flex items-center gap-2 px-4 pt-5 pb-3 font-bold tracking-wide text-primary">
+        <img src={logo} alt="" className="size-7" /> Claude Launcher
+      </header>
       <div className="flex flex-col gap-2 px-3 pb-3">
         <NewProjectDialog open={newProjectOpen} onOpenChange={onNewProjectOpenChange} onCreated={onSelect} />
         <Button variant="outline" className="w-full justify-start text-muted-foreground" onClick={onSearch}>

@@ -8,6 +8,7 @@ import dotenv from 'dotenv'
 import * as vault from './vault'
 import { repoRoot, listWorktrees, remoteBranches, worktreeStatus, removeWorktree, repoSummary } from './git'
 import { openClaude } from './terminal'
+import icon from '../../resources/icon.png?asset'
 
 // Misma carpeta de datos en desarrollo y en la app instalada
 // (si no, la instalada usaría "Claude Launcher" por el productName).
@@ -59,6 +60,7 @@ function createWindow() {
     backgroundColor: '#1b1d22',
     title: 'Claude Launcher',
     autoHideMenuBar: true,
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js')
     }

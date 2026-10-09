@@ -1,3 +1,5 @@
+<p align="center"><img src="apps/claude-launcher/src/renderer/src/assets/logo.svg" width="128" alt="Logo de Claude Launcher"></p>
+
 # Claude Launcher
 
 App de escritorio para organizar tus proyectos y repositorios, guardar sus secretos en una bóveda KeePass y abrir sesiones de [Claude Code](https://docs.claude.com/en/docs/claude-code) con las variables de entorno correctas en un clic.
