@@ -1,0 +1,99 @@
+import { execFile } from 'child_process'
+import { normalize } from 'path'
+import { existsSync } from 'fs'
+
+function git(args, cwd) {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, { cwd, windowsHide: true }, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr.trim() || err.message))
+      else resolve(stdout)
+    })
+  })
+}
+
+export async function repoRoot(dir) {
+  try {
+    return normalize((await git(['rev-parse', '--show-toplevel'], dir)).trim())
+  } catch {
+    throw new Error('La carpeta seleccionada no es un repositorio git.')
+  }
+}
+
+// Parsea la salida de `git worktree list --porcelain`.
+export async function listWorktrees(repoPath) {
+  const out = await git(['worktree', 'list', '--porcelain'], repoPath)
+  return out
+    .split(/\r?\n\r?\n/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block, i) => {
+      const wt = { main: i === 0 }
+      for (const line of block.split(/\r?\n/)) {
+        const [key, ...rest] = line.split(' ')
+        const value = rest.join(' ')
+        if (key === 'worktree') wt.path = normalize(value)
+        else if (key === 'HEAD') wt.head = value.slice(0, 7)
+        else if (key === 'branch') wt.branch = value.replace('refs/heads/', '')
+        else if (key === 'detached') wt.detached = true
+        else if (key === 'bare') wt.bare = true
+        else if (key === 'locked') wt.locked = true
+        else if (key === 'prunable') wt.prunable = true
+      }
+      return wt
+    })
+}
+
+// Ramas remotas (origin/develop, ...), sin los alias HEAD.
+export async function remoteBranches(repoPath) {
+  const out = await git(['for-each-ref', '--format=%(refname:short)', 'refs/remotes'], repoPath)
+  return out
+    .split(/\r?\n/)
+    .filter((b) => b.includes('/') && !b.endsWith('/HEAD'))
+    .sort()
+}
+
+// Qué se perdería al borrar un worktree: cambios sin commitear y commits que no están en la rama base.
+export async function worktreeStatus(wtPath, base) {
+  if (!existsSync(wtPath)) return { missing: true }
+  const lines = (s) => s.split(/\r?\n/).filter(Boolean)
+  const dirty = lines(await git(['status', '--porcelain'], wtPath))
+  const result = { dirtyCount: dirty.length, dirty: dirty.slice(0, 8), aheadCount: 0, ahead: [] }
+  try {
+    const ahead = lines(await git(['log', '--oneline', `${base}..HEAD`], wtPath))
+    Object.assign(result, { aheadCount: ahead.length, ahead: ahead.slice(0, 8) })
+  } catch {
+    result.baseError = `No se pudo comparar con ${base}: ¿existe esa rama remota?`
+  }
+  return result
+}
+
+export async function removeWorktree(repoPath, wtPath, force) {
+  if (!existsSync(wtPath)) return git(['worktree', 'prune'], repoPath)
+  return git(['worktree', 'remove', ...(force ? ['--force'] : []), wtPath], repoPath)
+}
+
+// Resumen rápido de un repo para la pantalla de inicio.
+export async function repoSummary(repoPath) {
+  if (!existsSync(repoPath)) return { error: 'La carpeta ya no existe' }
+  try {
+    const [branch, last, worktrees] = await Promise.all([
+      git(['branch', '--show-current'], repoPath),
+      git(['log', '-1', '--format=%cI'], repoPath).catch(() => ''),
+      listWorktrees(repoPath)
+    ])
+    // Worktrees (incluido el principal) con cambios sin commitear.
+    const dirty = await Promise.all(
+      worktrees
+        .filter((w) => !w.bare && existsSync(w.path))
+        .map((w) => git(['status', '--porcelain'], w.path).then((s) => s.trim() !== '', () => false))
+    )
+    return {
+      branch: branch.trim(),
+      dirtyWorktrees: dirty.filter(Boolean).length,
+      lastCommitAt: last.trim() || null,
+      worktreeCount: worktrees.filter((w) => !w.main).length
+    }
+  } catch (err) {
+    return { error: err.message }
+  }
+}

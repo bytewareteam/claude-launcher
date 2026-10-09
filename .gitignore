@@ -1,0 +1,11 @@
+node_modules/
+out/
+dist/
+.eslintcache
+.env
+.env.*
+*.kdbx
+*.kdbx.tmp
+.claude/settings.local.json
+.idea/
+.vscode/

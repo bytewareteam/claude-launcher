@@ -1,0 +1,45 @@
+# Cada push a main compila la versión portable de Windows y la publica como release.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  portable:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Empaquetar portable
+        run: npx electron-builder --win portable --publish never
+
+      - name: Publicar release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}-build.${{ github.run_number }}"
+          gh release create "$TAG" dist/*-portable.exe \
+            --target "${{ github.sha }}" \
+            --title "Claude Launcher ${VERSION} (build ${{ github.run_number }})" \
+            --generate-notes \
+            --latest
