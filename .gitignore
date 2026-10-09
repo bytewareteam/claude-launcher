@@ -9,3 +9,5 @@ dist/
 .claude/settings.local.json
 .idea/
 .vscode/
+.nx/cache
+.nx/workspace-data

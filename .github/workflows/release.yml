@@ -1,4 +1,6 @@
-# Cada push a main compila la versión portable de Windows y la publica como release.
+# En cada push a main, Nx Release decide la versión a partir de los Conventional Commits
+# (feat → minor, fix → patch, BREAKING CHANGE → major). Si hay versión nueva: commit
+# "chore(release)", tag vX.Y.Z, CHANGELOG.md, release en GitHub y se adjunta el portable.
 name: Release
 
 on:
@@ -13,33 +15,52 @@ concurrency:
   group: release
   cancel-in-progress: false
 
-jobs:
-  portable:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
+env:
+  NX_TUI: false
+  NX_DAEMON: false
 
-      - uses: actions/setup-node@v4
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
       - run: npm ci
 
-      - run: npm run build
+      # Falla antes de versionar si la app no compila.
+      - run: npx nx run-many -t build
 
-      - name: Empaquetar portable
-        run: npx electron-builder --win portable --publish never
+      - name: Identidad de git para el commit de release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Publicar release
-        shell: bash
+      - name: Versionar, changelog y release en GitHub
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          TAG="v${VERSION}-build.${{ github.run_number }}"
-          gh release create "$TAG" dist/*-portable.exe \
-            --target "${{ github.sha }}" \
-            --title "Claude Launcher ${VERSION} (build ${{ github.run_number }})" \
-            --generate-notes \
-            --latest
+        run: npx nx release --skip-publish --yes
+
+      - name: ¿Hay versión nueva?
+        id: tag
+        run: echo "tag=$(git tag --points-at HEAD --list 'v*' | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: Empaquetar portable
+        if: steps.tag.outputs.tag != ''
+        run: npx nx run claude-launcher:package
+
+      - name: Adjuntar portable a la release
+        if: steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ steps.tag.outputs.tag }}" apps/claude-launcher/dist/*-portable.exe --clobber

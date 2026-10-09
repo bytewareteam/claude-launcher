@@ -30,13 +30,18 @@ npm install
 npm run dev
 ```
 
-### Generar el instalador
+### Generar el ejecutable
 
 ```bash
-npm run build:win
+npx nx run claude-launcher:package       # solo portable
+npx nx run claude-launcher:package:all   # instalador NSIS + portable
 ```
 
-Genera en `dist/` un instalador NSIS y una versión portable.
+Se genera en `apps/claude-launcher/dist/`.
+
+## Descargas y versiones
+
+Cada versión publicada está en [Releases](https://github.com/bytewareteam/claude-launcher/releases) con el `.exe` portable (no requiere instalación). Las versiones siguen [semver](https://semver.org/lang/es/) y se publican solas a partir de los mensajes de commit; los cambios están en [CHANGELOG.md](CHANGELOG.md).
 
 ## Seguridad
 
@@ -49,7 +54,7 @@ Tus datos se guardan en `%APPDATA%\claude-launcher\` (`data.json` y `secrets.kdb
 
 ## Stack
 
-Electron · electron-vite · React 19 · Tailwind CSS v4 · shadcn/ui · TanStack Query · kdbxweb
+Nx · Electron · electron-vite · React 19 · Tailwind CSS v4 · shadcn/ui · TanStack Query · kdbxweb
 
 ## Contribuir
 

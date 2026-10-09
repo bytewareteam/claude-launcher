@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "useDaemonProcess": false,
+  "targetDefaults": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["{projectRoot}/out"],
+      "cache": true
+    },
+    "package": {
+      "dependsOn": ["build"],
+      "outputs": ["{projectRoot}/dist"]
+    }
+  },
+  "release": {
+    "projects": ["claude-launcher"],
+    "releaseTag": {
+      "pattern": "v{version}"
+    },
+    "version": {
+      "conventionalCommits": true
+    },
+    "changelog": {
+      "workspaceChangelog": {
+        "createRelease": "github",
+        "file": "{workspaceRoot}/CHANGELOG.md"
+      }
+    },
+    "git": {
+      "commitMessage": "chore(release): v{version} [skip ci]"
+    }
+  }
+}
