@@ -17,7 +17,9 @@ Monorepo con **Nx** + **npm workspaces**. Instala siempre desde la raíz.
 
 ```
 apps/claude-launcher/   La app Electron (proyecto Nx `claude-launcher`).
-packages/               Librerías compartidas (vacío por ahora).
+apps/web/               Página web en Astro + Tailwind v4 (proyecto Nx `web`), publicada en GitHub Pages.
+packages/               Librerías compartidas.
+  design-tokens/        `@claude-launcher/design-tokens`: colores, radios, fuentes y logo comunes a app y web (fuente: `tokens.js`; `build` genera los .css).
 nx.json                 Targets por defecto y configuración de Nx Release.
 ```
 
@@ -32,6 +34,7 @@ npm run build                            # compila todos los proyectos
 npx nx run claude-launcher:package       # .exe portable en apps/claude-launcher/dist/
 npx nx run claude-launcher:package:all   # instalador NSIS + portable
 npx nx release --skip-publish --dry-run  # simula la próxima release
+npx nx run web:dev                       # web en local (http://localhost:4321/claude-launcher/)
 ```
 
 No hay tests ni linter configurados. Para verificar un cambio: `npm run build` debe terminar sin errores y la app debe arrancar con `npm run dev`.
@@ -50,6 +53,13 @@ Los commits siguen **[Conventional Commits](https://www.conventionalcommits.org/
 | `chore:`, `docs:`, `refactor:`, `build:`, `ci:`… | sin release |
 
 En cada push a `main`, `.github/workflows/release.yml` ejecuta `nx release`: sube la versión de `apps/claude-launcher/package.json`, actualiza `CHANGELOG.md`, crea el tag `vX.Y.Z` y la release de GitHub con el `.exe` portable adjunto. No edites la versión ni el changelog a mano.
+
+## Web (`apps/web`)
+
+- Astro estático con `base: '/claude-launcher'`: los enlaces internos usan `import.meta.env.BASE_URL`.
+- Estilos desde `@claude-launcher/design-tokens/theme.css`: no definas colores ni radios propios; si hace falta uno nuevo, añádelo a `packages/design-tokens/tokens.js` para que lo compartan app y web.
+- `.github/workflows/pages.yml` la publica en https://bytewareteam.github.io/claude-launcher/ en cada push a `main` que toque `apps/web/` o `packages/design-tokens/`.
+- `cookie@^2` es dependencia directa de la web a propósito: sin ella npm iza la `cookie@0.7` de express (vía shadcn) y el build de Astro falla.
 
 ## Arquitectura de la app
 

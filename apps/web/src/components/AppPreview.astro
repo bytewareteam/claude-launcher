@@ -1,0 +1,110 @@
+---
+// Maqueta estática de la ventana de la app, dibujada con los mismos tokens que el renderer.
+import logo from '@claude-launcher/design-tokens/logo.svg?url'
+
+const projects = [
+  { name: 'Tienda online', repos: 3, active: true },
+  { name: 'API de pagos', repos: 2 },
+  { name: 'Panel interno', repos: 1 },
+  { name: 'Landing', repos: 1 }
+]
+
+const worktrees = [
+  { branch: 'main', path: 'C:\\dev\\tienda\\web', status: 'limpio', ahead: 0 },
+  { branch: 'feat/checkout', path: 'C:\\dev\\tienda\\web-checkout', status: '3 cambios', ahead: 5 },
+  { branch: 'fix/stock', path: 'C:\\dev\\tienda\\web-stock', status: 'limpio', ahead: 1 }
+]
+---
+
+<div
+  class="overflow-hidden rounded-xl border bg-background shadow-2xl shadow-black/40 ring-1 ring-white/5"
+  aria-hidden="true"
+>
+  <div class="flex h-9 items-center gap-2 border-b bg-sidebar px-3 text-xs text-muted-foreground">
+    <img src={logo} alt="" class="size-4" />
+    <span>Claude Launcher</span>
+    <span class="ml-auto flex gap-3 font-mono">
+      <span>—</span><span>▢</span><span>✕</span>
+    </span>
+  </div>
+
+  <div class="grid grid-cols-[180px_1fr] text-sm max-sm:grid-cols-1">
+    <aside class="space-y-1 border-r bg-sidebar p-3 max-sm:hidden">
+      <div
+        class="mb-3 flex items-center justify-between rounded-md border bg-background/40 px-2 py-1.5 text-xs text-muted-foreground"
+      >
+        <span>Buscar…</span>
+        <kbd class="font-mono">Ctrl K</kbd>
+      </div>
+      <p class="px-2 pb-1 text-[11px] tracking-wide text-muted-foreground uppercase">Proyectos</p>
+      {
+        projects.map((p) => (
+          <div
+            class:list={[
+              'flex items-center justify-between rounded-md px-2 py-1.5',
+              p.active ? 'bg-sidebar-accent text-foreground' : 'text-muted-foreground'
+            ]}
+          >
+            <span class="truncate">{p.name}</span>
+            <span class="text-xs">{p.repos}</span>
+          </div>
+        ))
+      }
+    </aside>
+
+    <section class="space-y-4 p-5">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h3 class="font-semibold">Tienda online</h3>
+          <p class="text-xs text-muted-foreground">3 repositorios · 4 secretos en la bóveda</p>
+        </div>
+        <span
+          class="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+        >
+          Abrir Claude
+        </span>
+      </div>
+
+      <div class="rounded-lg border bg-card">
+        <div class="flex items-center justify-between border-b px-4 py-2.5">
+          <span class="font-mono text-xs">web</span>
+          <span class="text-xs text-muted-foreground">base: origin/main</span>
+        </div>
+        <ul class="divide-y">
+          {
+            worktrees.map((w) => (
+              <li class="flex items-center gap-3 px-4 py-2.5">
+                <span
+                  class:list={[
+                    'size-2 shrink-0 rounded-full',
+                    w.status === 'limpio' ? 'bg-muted-foreground/50' : 'bg-primary'
+                  ]}
+                />
+                <div class="min-w-0 flex-1">
+                  <p class="truncate font-mono text-xs">{w.branch}</p>
+                  <p class="truncate text-[11px] text-muted-foreground">{w.path}</p>
+                </div>
+                <span class="hidden text-[11px] text-muted-foreground sm:inline">{w.status}</span>
+                {w.ahead > 0 && (
+                  <span class="rounded bg-secondary px-1.5 py-0.5 font-mono text-[11px]">
+                    ↑{w.ahead}
+                  </span>
+                )}
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+
+      <div class="rounded-lg border bg-card px-4 py-3">
+        <p class="mb-2 text-xs text-muted-foreground">Variables de entorno · bloqueada en 14:32</p>
+        <div class="grid grid-cols-2 gap-2 font-mono text-[11px]">
+          <span class="truncate">DATABASE_URL</span><span class="text-muted-foreground">••••••••</span>
+          <span class="truncate">STRIPE_SECRET_KEY</span><span class="text-muted-foreground"
+            >••••••••</span
+          >
+        </div>
+      </div>
+    </section>
+  </div>
+</div>

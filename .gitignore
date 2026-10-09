@@ -11,3 +11,4 @@ dist/
 .vscode/
 .nx/cache
 .nx/workspace-data
+.astro/

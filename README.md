@@ -4,7 +4,7 @@
 
 App de escritorio para organizar tus proyectos y repositorios, guardar sus secretos en una bóveda KeePass y abrir sesiones de [Claude Code](https://docs.claude.com/en/docs/claude-code) con las variables de entorno correctas en un clic.
 
-> Estado: uso personal, solo **Windows**.
+> Estado: uso personal, solo **Windows**. Web: https://bytewareteam.github.io/claude-launcher/
 
 ## Funciones
 
