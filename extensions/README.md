@@ -119,11 +119,11 @@ Una acción sin `label` se muestra como botón de icono (usa `title` como toolti
 | `text` | `text`, `tone?` |
 | `heading` | `text` |
 | `html` | `html`: HTML que la app sanea con DOMPurify (texto, listas, tablas y enlaces `https`; sin estilos, imágenes ni scripts) |
-| `list` | `items`, `searchable?`, `empty?`. Cada `badge` es texto o `{ label, tone }`; `children` (mismos campos), `childrenLabel` y `childrenOpen` (por defecto `true`) añaden una sublista plegable; `body` es texto largo con saltos de línea y `html`, HTML saneado como el del bloque `html`; `breakdown: [{ label, value, tone?, detail? }]` pinta una barra apilada pequeña con leyenda |
+| `list` | `items`, `searchable?`, `empty?`. Cada `badge` es texto o `{ label, tone }`; `children` (mismos campos), `childrenLabel` y `childrenOpen` (por defecto `false`) añaden una sublista plegable; `body` es texto largo con saltos de línea y `html`, HTML saneado como el del bloque `html`; `breakdown: [{ label, value, tone?, detail? }]` pinta una barra apilada pequeña con leyenda |
 | `stats` | `items: [{ label, value, hint?, tone?, progress?, detail? }]` (`progress` de 0 a 1) |
 | `breakdown` | `title`, `items: [{ label, value, tone?, detail? }]`, `empty?`: barra apilada con leyenda |
 | `columns` | `blocks`: otros bloques en columnas |
-| `section` | `title`, `blocks`, `open?` (por defecto `true`), `id?`: sección plegable; la app recuerda si se plegó |
+| `section` | `title`, `blocks`, `open?` (por defecto `false`), `id?`: sección plegable; la app recuerda si se plegó |
 | `tabs` | `tabs: [{ id, label, blocks }]`: pestañas, cada una con sus bloques |
 | `kanban` | `columns: [{ id, title, tone?, items }]`, `filter?: { label, all? }`, `empty?`. Los `items` son como los de `list` (con `children`); con `filter`, cada tarjeta indica en `filterValues: [...]` los valores por los que se puede filtrar y los `children` que no coinciden se atenúan. Con `action: { id, args }` toda la tarjeta se puede pulsar y llama a `action(id, args)` (p. ej. para abrir otra pantalla) |
 

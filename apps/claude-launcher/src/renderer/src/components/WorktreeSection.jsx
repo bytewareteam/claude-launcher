@@ -25,7 +25,7 @@ export const DEFAULT_BASE_BRANCH = 'origin/develop'
 export const wtLabel = (wt) => wt.branch || (wt.detached ? `detached @ ${wt.head}` : wt.head || '—')
 
 export function WorktreeSection({ project, repo, onLaunch }) {
-  const [open, setOpen] = useRememberedOpen(`wt:${repo.id}`, true)
+  const [open, setOpen] = useRememberedOpen(`wt:${repo.id}`)
   const { data: worktrees, isPending, error } = useWorktrees(repo.path)
   const base = repo.baseBranch || DEFAULT_BASE_BRANCH
   const setBase = useAction((branch) => api.setBaseBranch(project.id, repo.id, branch))
