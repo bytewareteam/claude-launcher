@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('api', {
     set: invoke('settings:set'),
     claudeOptions: invoke('claude:options')
   },
+  mcp: {
+    status: invoke('mcp:status'),
+    regenerateToken: invoke('mcp:regenerateToken')
+  },
   onboarding: {
     pending: invoke('onboarding:pending'),
     done: invoke('onboarding:done')
