@@ -363,8 +363,9 @@ exports.activate = (ctx) => {
     blocks: [workItemList(md, link, list)]
   })
 
-  // `stories` ya vienen con sus tareas y sin las eliminadas.
-  function sprintStats(md, link, sprint, stories, tasks, bugs) {
+  // `stories` ya vienen con sus tareas y sin las eliminadas. Con `owner`, las cifras son de esa
+  // persona y su nombre va en el título de cada modal.
+  function sprintStats(md, link, sprint, stories, tasks, bugs, owner) {
     const live = (list) => list.filter((it) => stateInfo(md, it).category !== 'Removed')
     const [s, t, b] = [stories, live(tasks), live(bugs)]
     const sDone = s.filter((it) => isDone(md, it)).length
@@ -373,6 +374,7 @@ exports.activate = (ctx) => {
     const hours = t.reduce((n, it) => n + (isDone(md, it) ? 0 : it.remaining), 0)
 
     const pending = s.filter((it) => !isDone(md, it))
+    const of = owner ? ` · ${owner}` : ''
     const { startDate, finishDate } = sprint.attributes ?? {}
     let days = { label: 'Días restantes', value: '—', hint: 'El sprint no tiene fechas' }
     if (startDate && finishDate) {
@@ -389,7 +391,7 @@ exports.activate = (ctx) => {
       }
     }
     days.detail = {
-      title: sprint.name,
+      title: sprint.name + of,
       description: `${sprintDates(sprint)} · ${sprint.path}`,
       blocks: [
         { type: 'heading', text: `Historias pendientes (${pending.length})` },
@@ -407,7 +409,7 @@ exports.activate = (ctx) => {
           progress: s.length ? sDone / s.length : 0,
           tone: 'success',
           detail: {
-            title: `Historias de ${sprint.name}`,
+            title: `Historias de ${sprint.name}${of}`,
             description: `${sDone} de ${s.length} completadas`,
             blocks: [
               breakdown(md, 'Por estado', s, 'Sin historias en el sprint.', storiesIn(md, link)),
@@ -422,7 +424,7 @@ exports.activate = (ctx) => {
           hint: hours ? `${hours} h de trabajo restante` : undefined,
           tone: 'info',
           detail: {
-            title: `Tareas de ${sprint.name}`,
+            title: `Tareas de ${sprint.name}${of}`,
             description: `${tDone} de ${t.length} completadas${hours ? ` · ${hours} h restantes` : ''}`,
             blocks: [
               breakdown(
@@ -442,7 +444,7 @@ exports.activate = (ctx) => {
           hint: `${b.length} en el sprint`,
           tone: bOpen ? 'error' : 'success',
           detail: {
-            title: `Bugs de ${sprint.name}`,
+            title: `Bugs de ${sprint.name}${of}`,
             description: `${bOpen} abiertos de ${b.length}`,
             blocks: [
               breakdown(md, 'Por estado', b, 'Sin bugs en el sprint.', itemsIn(md, link, 'Bugs')),
@@ -451,6 +453,58 @@ exports.activate = (ctx) => {
           }
         }
       ]
+    }
+  }
+
+  // Una fila por persona con su avance; tú primero y «Sin asignar» al final.
+  function members(md, link, me, stories, tasks, bugs) {
+    const people = new Map()
+    const add = (kind) => (it) => {
+      const key = it.assignedId ?? ''
+      if (!people.has(key))
+        people.set(key, { key, name: ownerOf(it), stories: [], tasks: [], bugs: [] })
+      people.get(key)[kind].push(it)
+    }
+    const live = (it) => stateInfo(md, it).category !== 'Removed'
+    stories.forEach(add('stories'))
+    tasks.filter(live).forEach(add('tasks'))
+    bugs.filter(live).forEach(add('bugs'))
+
+    const left = (p) => p.tasks.reduce((n, t) => n + (isDone(md, t) ? 0 : t.remaining), 0)
+    const rank = (p) => (p.key === me ? 0 : p.key ? 1 : 2)
+    const rows = [...people.values()].sort(
+      (a, b) => rank(a) - rank(b) || left(b) - left(a) || a.name.localeCompare(b.name)
+    )
+
+    return {
+      type: 'list',
+      searchable: rows.length > 5,
+      empty: 'No hay trabajo asignado en el sprint.',
+      items: rows.map((p) => {
+        const tDone = p.tasks.filter((t) => isDone(md, t)).length
+        const sDone = p.stories.filter((it) => isDone(md, it)).length
+        const bOpen = p.bugs.filter((it) => !isDone(md, it)).length
+        const hours = left(p)
+        return {
+          id: p.key || 'none',
+          title: p.key === me ? `${p.name} (tú)` : p.name,
+          badges: bOpen
+            ? [{ label: bOpen === 1 ? '1 bug abierto' : `${bOpen} bugs abiertos`, tone: 'error' }]
+            : [],
+          meta: [
+            p.stories.length && `${sDone}/${p.stories.length} historias`,
+            p.tasks.length && `${tDone}/${p.tasks.length} tareas`,
+            hours && `${hours} h restantes`
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          breakdown: byState(md, p.tasks, (state, list) => ({
+            title: p.name,
+            description: `Tareas en «${state}» (${list.length})`,
+            blocks: [workItemList(md, link, list)]
+          }))
+        }
+      })
     }
   }
 
@@ -633,44 +687,57 @@ exports.activate = (ctx) => {
     const data = await load(project)
     if (!data) return unlinked
     const { link, team, md, sprint, me, stories, tasks, bugs, live } = data
+    if (!sprint) return { ...header(data), blocks: [noSprint(team)] }
     const all = await withTasks(link, md, stories.filter(live))
-    const mine = all.filter((it) => it.assignedId === me)
+    const isMine = (it) => it.assignedId === me
+    const mine = all.filter(isMine)
+    // Historias de otras personas en las que tengo tareas.
+    const helping = all.filter((it) => !isMine(it) && it.tasks.some(isMine))
+    const myName = [...stories, ...tasks, ...bugs].find(isMine)?.assignedTo ?? 'tú'
+
+    const byStateColumns = (s, t, b) => ({
+      type: 'columns',
+      blocks: [
+        breakdown(md, 'Historias por estado', s, 'Sin historias.', storiesIn(md, link)),
+        breakdown(md, 'Tareas por estado', t, 'Sin tareas.', itemsIn(md, link, 'Tareas')),
+        breakdown(md, 'Bugs por estado', b, 'Sin bugs.', itemsIn(md, link, 'Bugs'))
+      ]
+    })
+
+    const [myTasks, myBugs] = [tasks.filter(isMine), bugs.filter(isMine)]
+    const personal = [
+      sprintStats(md, link, sprint, mine, myTasks, myBugs, myName),
+      byStateColumns(mine, myTasks, myBugs),
+      { type: 'heading', text: `Mis historias (${mine.length})` },
+      storyList(md, link, mine, `No tienes historias de usuario asignadas en ${sprint.name}.`),
+      ...(helping.length
+        ? [
+            {
+              type: 'heading',
+              text: `Historias de otras personas con tareas mías (${helping.length})`
+            },
+            storyList(md, link, helping)
+          ]
+        : [])
+    ]
+    const teamWide = [
+      sprintStats(md, link, sprint, all, tasks, bugs),
+      byStateColumns(all, tasks, bugs),
+      { type: 'heading', text: 'Por persona' },
+      members(md, link, me, all, tasks, bugs)
+    ]
 
     return {
       ...header(data),
-      blocks: sprint
-        ? [
-            sprintStats(md, link, sprint, all, tasks, bugs),
-            {
-              type: 'columns',
-              blocks: [
-                breakdown(
-                  md,
-                  'Historias por estado',
-                  all,
-                  'Sin historias en el sprint.',
-                  storiesIn(md, link)
-                ),
-                breakdown(
-                  md,
-                  'Tareas por estado',
-                  tasks,
-                  'Sin tareas en el sprint.',
-                  itemsIn(md, link, 'Tareas')
-                ),
-                breakdown(
-                  md,
-                  'Bugs por estado',
-                  bugs,
-                  'Sin bugs en el sprint.',
-                  itemsIn(md, link, 'Bugs')
-                )
-              ]
-            },
-            { type: 'heading', text: `Mis historias en ${sprint.name} (${mine.length})` },
-            storyList(md, link, mine, `No tienes historias de usuario asignadas en ${sprint.name}.`)
+      blocks: [
+        {
+          type: 'tabs',
+          tabs: [
+            { id: 'me', label: 'Mis métricas', blocks: personal },
+            { id: 'team', label: `Equipo ${team}`, blocks: teamWide }
           ]
-        : [noSprint(team)]
+        }
+      ]
     }
   }
 
