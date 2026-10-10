@@ -181,7 +181,7 @@ function TabsBlock({ block, ctx }) {
 function SectionBlock({ block, ctx }) {
   const [open, setOpen] = useRememberedOpen(
     `section:${ctx.extId}/${ctx.viewId}/${ctx.projectId}/${block.id ?? block.title}`,
-    block.open ?? true
+    block.open ?? false
   )
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -416,7 +416,7 @@ function ItemRow({ item, ctx, compact }) {
 
 // Subelementos de un elemento (p. ej. tareas de una historia), plegables.
 function ItemChildren({ item, ctx }) {
-  const [open, setOpen] = useState(item.childrenOpen ?? true)
+  const [open, setOpen] = useState(item.childrenOpen ?? false)
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="mt-2">
       <CollapsibleTrigger className="group flex items-center gap-1 py-1 text-xs tracking-widest text-muted-foreground uppercase hover:text-foreground">
@@ -492,7 +492,7 @@ function KanbanBlock({ block, ctx }) {
 
 // Con `action: { id, args }` toda la tarjeta es pulsable (p. ej. para abrir su detalle).
 function KanbanCard({ item, ctx, dim }) {
-  const [open, setOpen] = useState(item.childrenOpen ?? true)
+  const [open, setOpen] = useState(item.childrenOpen ?? false)
   const run = useAction(() =>
     api.extensions.action(ctx.extId, ctx.viewId, item.action.id, item.action.args, ctx.projectId)
   )
