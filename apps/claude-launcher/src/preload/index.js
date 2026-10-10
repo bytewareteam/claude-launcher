@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('api', {
   openClaude: invoke('open:claude'),
   openFolder: invoke('open:folder'),
   openWeb: invoke('open:web'),
+  ide: {
+    list: invoke('ide:list'),
+    open: invoke('ide:open')
+  },
   openUrl: invoke('open:url'),
   dashboard: invoke('dashboard'),
   settings: {

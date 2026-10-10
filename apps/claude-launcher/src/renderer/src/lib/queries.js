@@ -36,6 +36,9 @@ export const useWorktreeStatus = (wtPath, base, enabled) =>
     staleTime: 0
   })
 
+// IDEs instalados y el elegido por el usuario (null = el primero de la lista).
+export const useIdes = () => useQuery({ queryKey: ['ides'], queryFn: api.ide.list })
+
 export const useOnboardingPending = () =>
   useQuery({ queryKey: ['onboarding'], queryFn: api.onboarding.pending, staleTime: Infinity })
 

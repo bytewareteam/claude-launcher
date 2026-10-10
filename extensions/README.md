@@ -52,7 +52,8 @@ catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a ex
       "dialogs": true
     },
     "views": [{ "id": "principal", "title": "Mi vista", "icon": "puzzle" }],
-    "projectTabs": [{ "id": "board", "title": "Board", "icon": "kanban" }]
+    "projectTabs": [{ "id": "board", "title": "Board", "icon": "kanban" }],
+    "repoSources": [{ "id": "principal", "title": "Mi servicio", "icon": "cloud" }]
   }
 }
 ```
@@ -67,6 +68,11 @@ Cada vista de `views` aparece en la barra lateral; cada una de `projectTabs`, co
 pantalla de cada proyecto. Ambas se registran igual con `ctx.views.register`. Una pestaña de
 proyecto recibe en `render(context)` y `action(id, args, context)` el proyecto que se está viendo:
 `context.project = { id, name, repos: [{ id, name, path }] }` (no hace falta el permiso `projects`).
+
+Cada entrada de `repoSources` apunta a una vista registrada (puede ser la misma de `views`) y
+añade «Clonar desde *title*…» al botón *Añadir repositorio* de cada proyecto. La vista se abre en
+un diálogo y, como las pestañas de proyecto, recibe `context.project`: clona y añade el repo a ese
+proyecto con `ctx.projects.addRepo`. Si la acción devuelve `{ close: true }`, el diálogo se cierra.
 
 Iconos disponibles (p. ej. `layout-dashboard`, `kanban`): ver `apps/claude-launcher/src/renderer/src/lib/extIcons.js`.
 
