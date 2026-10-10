@@ -65,6 +65,16 @@ Los commits siguen **[Conventional Commits](https://www.conventionalcommits.org/
 
 Antes del PR a `main`, comprueba qué saldría desde la rama de release: `npx nx release --skip-publish --dry-run`.
 
+**Un worktree por tarea.** No cambies de rama ni edites en la copia principal del repo: cada tarea se trabaja en su propio `git worktree`, así varias tareas (o agentes) no se pisan los cambios.
+
+```bash
+git fetch origin
+git worktree add ../claude-launcher-worktrees/<rama> -b <rama> origin/release/1.5
+cd ../claude-launcher-worktrees/<rama> && npm install
+# … trabajo, commits, push y PR a release/1.5 …
+git worktree remove ../claude-launcher-worktrees/<rama>   # cuando se fusione la PR
+```
+
 En cada push a `main`, `.github/workflows/release.yml` ejecuta `nx release` con dos grupos (`nx.json`):
 
 - **app**: sube la versión de `apps/claude-launcher/package.json`, actualiza `CHANGELOG.md`, crea el tag `vX.Y.Z` y la release de GitHub con el `.exe` portable adjunto.
