@@ -1,7 +1,7 @@
 {
   "name": "github",
   "displayName": "GitHub",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Lista tus repositorios de GitHub (vía GitHub CLI) y clónalos donde quieras.",
   "main": "index.js",
   "private": true,
