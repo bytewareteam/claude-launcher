@@ -76,7 +76,7 @@ añade «Clonar desde *title*…» al botón *Añadir repositorio* de cada proye
 un diálogo y, como las pestañas de proyecto, recibe `context.project`: clona y añade el repo a ese
 proyecto con `ctx.projects.addRepo`. Si la acción devuelve `{ close: true }`, el diálogo se cierra.
 
-Iconos disponibles (p. ej. `layout-dashboard`, `kanban`): ver `apps/claude-launcher/src/renderer/src/lib/extIcons.js`.
+Iconos disponibles (p. ej. `layout-dashboard`, `kanban`, `bitbucket`): ver `apps/claude-launcher/src/renderer/src/lib/extIcons.js`.
 
 ## Código (`index.js`)
 
@@ -166,5 +166,5 @@ con `" % ! ^ & | < >` o saltos de línea, que cmd.exe interpretaría.
 
 `console.log` y los errores van al **Registro** de la extensión (pantalla *Extensiones*).
 
-Ejemplos completos: [`github/`](github/index.js), [`azure-devops/`](azure-devops/index.js) y
-[`azure-boards/`](azure-boards/index.js) (pestaña de proyecto).
+Ejemplos completos: [`github/`](github/index.js), [`azure-devops/`](azure-devops/index.js),
+[`bitbucket/`](bitbucket/index.js) y [`azure-boards/`](azure-boards/index.js) (pestaña de proyecto).

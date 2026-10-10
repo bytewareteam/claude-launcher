@@ -1,6 +1,7 @@
 // Logos de marcas (Claude, GitHub, IDEs…) en versión monocroma: usan currentColor, como lucide.
 import {
   AndroidIcon,
+  Bitbucket,
   ClaudeIcon,
   Clion,
   CursorIcon,
@@ -21,7 +22,7 @@ import {
 } from '@dev.icons/react/mono'
 import { Code } from 'lucide-react'
 
-export { ClaudeIcon, GithubIcon, MicrosoftAzure }
+export { Bitbucket, ClaudeIcon, GithubIcon, MicrosoftAzure }
 
 // Por id de IDE (ver src/main/ide.js). Los que no tienen logo usan un icono genérico.
 const IDE_ICONS = {
