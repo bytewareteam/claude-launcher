@@ -93,7 +93,7 @@ Una acción sin `label` se muestra como botón de icono (usa `title` como toolti
 
 | Método | Devuelve |
 | --- | --- |
-| `ctx.exec(cmd, args, { cwd, timeout })` | stdout; error con `.code` (`ENOENT` si no existe) |
+| `ctx.exec(cmd, args, { cwd, timeout, env })` | stdout; error con `.code` (`ENOENT` si no existe). `env` se suma al entorno mínimo |
 | `ctx.projects.list()` | `[{ id, name, repos: [{ id, name, path }] }]` |
 | `ctx.projects.addRepo(projectId, path)` | Añade el repo git en `path` al proyecto |
 | `ctx.ui.quickPick(items, { placeholder })` | `id` elegido o `null`. `items: [{ id, label, description? }]` |
@@ -103,6 +103,9 @@ Una acción sin `label` se muestra como botón de icono (usa `title` como toolti
 | `ctx.storage.get(clave)` / `set(clave, valor)` | Datos JSON propios de la extensión |
 | `ctx.views.refresh(viewId?)` | Vuelve a pintar la vista |
 
+En Windows `ctx.exec` también lanza scripts `.cmd`/`.bat` (como `az`), pero rechaza argumentos
+con `" % ! ^ & | < >` o saltos de línea, que cmd.exe interpretaría.
+
 `console.log` y los errores van al **Registro** de la extensión (pantalla *Extensiones*).
 
-Ejemplo completo: [`github/`](github/index.js).
+Ejemplos completos: [`github/`](github/index.js) y [`azure-devops/`](azure-devops/index.js).

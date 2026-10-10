@@ -3,6 +3,8 @@
 // que necesite de la app lo pide por mensajes, y el principal comprueba sus permisos.
 import { createRequire } from 'module'
 import { execFile } from 'child_process'
+import { existsSync } from 'fs'
+import { delimiter, extname, join } from 'path'
 
 const port = process.parentPort
 let manifest
@@ -22,15 +24,53 @@ function host(method, ...params) {
 
 // --- API que recibe la extensión en activate(ctx) ------------------------------------
 
-function exec(cmd, args = [], { cwd, timeout = 60_000 } = {}) {
+// Busca `cmd` en PATH como cmd.exe (con PATHEXT) para saber si es un script .cmd/.bat,
+// que execFile no puede lanzar sin shell (p. ej. `az`).
+function whichWin(cmd) {
+  const exts = extname(cmd) ? [''] : (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';')
+  for (const dir of (process.env.PATH || '').split(delimiter).filter(Boolean))
+    for (const ext of exts) if (existsSync(join(dir, cmd + ext))) return join(dir, cmd + ext)
+  return null
+}
+
+// Caracteres que cmd.exe interpreta incluso entre comillas: no se pueden pasar con seguridad.
+const CMD_UNSAFE = /["%!^&|<>\r\n]/
+
+function exec(cmd, args = [], { cwd, timeout = 60_000, env } = {}) {
   // El principal no ve este proceso hijo: el permiso se comprueba aquí contra el manifest.
   if (!manifest.permissions.exec.includes(cmd))
     return Promise.reject(new Error(`La extensión no tiene permiso para ejecutar «${cmd}».`))
+  let file = cmd
+  let shell = false
+  if (process.platform === 'win32') {
+    const found = whichWin(cmd)
+    if (!found) {
+      const e = new Error(`No se encuentra «${cmd}».`)
+      e.code = 'ENOENT'
+      return Promise.reject(e)
+    }
+    if (/\.(cmd|bat)$/i.test(found)) {
+      if (args.some((a) => CMD_UNSAFE.test(String(a))))
+        return Promise.reject(new Error(`Argumento no admitido para «${cmd}» (es un script .cmd).`))
+      // La línea se monta aquí (no con args + shell, obsoleto en Node): ya está validada.
+      const quote = (a) => (/[\s,;=]/.test(a) ? `"${a}"` : a)
+      file = [`"${found}"`, ...args.map(String).map(quote)].join(' ')
+      args = []
+      shell = true
+    }
+  }
   return new Promise((resolve, reject) => {
     execFile(
-      cmd,
+      file,
       args,
-      { cwd, timeout, windowsHide: true, maxBuffer: 50 * 1024 * 1024 },
+      {
+        cwd,
+        timeout,
+        shell,
+        env: env ? { ...process.env, ...env } : undefined,
+        windowsHide: true,
+        maxBuffer: 50 * 1024 * 1024
+      },
       (err, stdout, stderr) => {
         if (!err) return resolve(stdout)
         const e = new Error(stderr.trim() || err.message)
