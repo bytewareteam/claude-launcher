@@ -231,7 +231,7 @@ function LaunchStep() {
             buscar proyectos y worktrees desde cualquier sitio.
           </span>
         </Bullet>
-        <Bullet icon={Puzzle}>Amplía la app desde «Extensiones» en la barra lateral.</Bullet>
+        <Bullet icon={Puzzle}>Amplía la app desde «Configuración → Extensiones» en la barra lateral.</Bullet>
       </ul>
       <p className="text-xs text-muted-foreground">Puedes volver a ver este tutorial desde la pantalla de inicio.</p>
     </Step>

@@ -88,7 +88,7 @@ src/
   main/        Proceso principal (Node). Toda la E/S: disco, git, bóveda, terminal.
     index.js     Ventana, persistencia (electron-store) y handlers IPC.
     git.js       Wrappers de `git` (worktrees, ramas remotas, estado).
-    vault.js     Bóveda KeePass (kdbxweb + Argon2 vía hash-wasm). Autobloqueo a los 15 min.
+    vault.js     Bóveda KeePass (kdbxweb + Argon2 vía hash-wasm). Autobloqueo configurable (15 min por defecto).
     terminal.js  Lanza `wt.exe … claude` con un entorno filtrado.
     extensions.js       Instala/desinstala extensiones, guarda su consentimiento y las arranca.
     extension-packages.js  Catálogo remoto, descarga verificada (sha256) y extracción segura de .zip.
@@ -132,7 +132,7 @@ solo se activan tras aceptar sus permisos. En desarrollo carga también las de `
 - Los secretos **nunca** salen del proceso principal salvo por `vault:get`/`vault:copy` a petición del usuario.
 - `terminal.js` solo hereda una lista blanca de variables del sistema (`SYSTEM_VARS`). No la amplíes sin motivo.
 - Los secretos se pasan por **entorno**, nunca por argumentos de línea de comandos.
-- El portapapeles se limpia a los 30 s tras copiar un secreto.
+- El portapapeles se limpia tras copiar un secreto (30 s por defecto, 5–300 s en Configuración).
 - No añadas `nodeIntegration` ni desactives `contextIsolation`.
 - Las extensiones no reciben secretos ni código propio en el renderer (UI declarativa).
 

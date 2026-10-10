@@ -39,6 +39,12 @@ export const useWorktreeStatus = (wtPath, base, enabled) =>
 export const useOnboardingPending = () =>
   useQuery({ queryKey: ['onboarding'], queryFn: api.onboarding.pending, staleTime: Infinity })
 
+export const useSettings = () => useQuery({ queryKey: ['settings'], queryFn: api.settings.get })
+
+// Opciones de `claude --help`; no cambian mientras la app está abierta.
+export const useClaudeOptions = () =>
+  useQuery({ queryKey: ['claude-options'], queryFn: api.settings.claudeOptions, staleTime: Infinity })
+
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
 
 export const useExtensions = () =>

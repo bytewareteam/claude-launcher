@@ -21,17 +21,17 @@ CryptoEngine.setArgon2Impl(async (password, salt, memory, iterations, length, pa
 });
 
 const ROOT_NAME = 'Claude Launcher';
-const AUTO_LOCK_MS = 15 * 60 * 1000;
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 let db = null;
 let dbPath = null;
 let lockTimer = null;
 let onLock = () => {};
+let autoLockMs = 15 * 60 * 1000;
 
 function touch() {
   clearTimeout(lockTimer);
-  lockTimer = setTimeout(() => lock({ auto: true }), AUTO_LOCK_MS);
+  lockTimer = setTimeout(() => lock({ auto: true }), autoLockMs);
 }
 
 function requireUnlocked() {
@@ -195,3 +195,9 @@ export function envFor(projectScope, repoScope) {
 
 export const isUnlocked = () => !!db;
 export const setOnLock = (fn) => (onLock = fn);
+
+// Cambia el autobloqueo; si está abierta, el nuevo plazo cuenta desde ahora.
+export function setAutoLockMinutes(minutes) {
+  autoLockMs = minutes * 60 * 1000;
+  if (db) touch();
+}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { House, Lock, LockOpen, Plus, Puzzle, Search, ShieldPlus } from 'lucide-react'
+import { House, Lock, LockOpen, Plus, Search, Settings, ShieldPlus } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
 import { searchShortcut } from '@/components/CommandPalette'
 import { Button } from '@/components/ui/button'
@@ -64,30 +64,30 @@ export function Sidebar({ projects, extViews, selectedId, onSelect, onSearch, ne
           ))}
           {q && !visible.length && <li className="px-3 py-2 text-sm text-muted-foreground">Sin resultados.</li>}
         </ul>
-        <ul className="mt-1 space-y-0.5 border-t pt-1">
-          {extViews.map(({ key, view }) => {
-            const Icon = extIcon(view.icon)
-            return (
-              <li key={key}>
-                <button onClick={() => onSelect(key)} className={navItem(key === selectedId)}>
-                  <span className="flex items-center gap-2 truncate">
-                    <Icon className="size-4" /> {view.title}
-                  </span>
-                </button>
-              </li>
-            )
-          })}
-          <li>
-            <button onClick={() => onSelect('extensions')} className={navItem(selectedId === 'extensions')}>
-              <span className="flex items-center gap-2 text-muted-foreground">
-                <Puzzle className="size-4" /> Extensiones
-              </span>
-            </button>
-          </li>
-        </ul>
+        {extViews.length > 0 && (
+          <ul className="mt-1 space-y-0.5 border-t pt-1">
+            {extViews.map(({ key, view }) => {
+              const Icon = extIcon(view.icon)
+              return (
+                <li key={key}>
+                  <button onClick={() => onSelect(key)} className={navItem(key === selectedId)}>
+                    <span className="flex items-center gap-2 truncate">
+                      <Icon className="size-4" /> {view.title}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </nav>
-      <footer className="border-t p-3">
+      <footer className="flex flex-col gap-1 border-t p-3">
         <VaultButton />
+        <button onClick={() => onSelect('settings')} className={navItem(selectedId === 'settings')}>
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <Settings className="size-4" /> Configuración
+          </span>
+        </button>
       </footer>
     </aside>
   )

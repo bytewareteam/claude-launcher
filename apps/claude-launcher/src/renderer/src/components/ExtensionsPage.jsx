@@ -38,7 +38,8 @@ export function permissionLines(p) {
 
 const installed = (r) => toast.success(`${r.displayName} v${r.version} instalada`)
 
-export function ExtensionsPage() {
+// embedded: dentro de Configuración, con un título secundario.
+export function ExtensionsPage({ embedded = false }) {
   const { data: extensions = [] } = useExtensions()
   const catalog = useExtensionCatalog()
   const entries = catalog.data ?? []
@@ -74,7 +75,11 @@ export function ExtensionsPage() {
     <section>
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Extensiones</h1>
+          {embedded ? (
+            <h2 className="text-lg font-semibold">Extensiones</h2>
+          ) : (
+            <h1 className="text-2xl font-semibold">Extensiones</h1>
+          )}
           <p className="text-sm text-muted-foreground">
             Añaden vistas y acciones a la app. Cada una corre en su propio proceso, sin acceso a la
             bóveda.

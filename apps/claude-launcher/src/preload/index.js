@@ -29,6 +29,11 @@ contextBridge.exposeInMainWorld('api', {
   openWeb: invoke('open:web'),
   openUrl: invoke('open:url'),
   dashboard: invoke('dashboard'),
+  settings: {
+    get: invoke('settings:get'),
+    set: invoke('settings:set'),
+    claudeOptions: invoke('claude:options')
+  },
   onboarding: {
     pending: invoke('onboarding:pending'),
     done: invoke('onboarding:done')
@@ -39,6 +44,8 @@ contextBridge.exposeInMainWorld('api', {
     unlock: invoke('vault:unlock'),
     lock: invoke('vault:lock'),
     useExisting: invoke('vault:useExisting'),
+    resetPath: invoke('vault:resetPath'),
+    showFile: invoke('vault:showFile'),
     list: invoke('vault:list'),
     get: invoke('vault:get'),
     set: invoke('vault:set'),
