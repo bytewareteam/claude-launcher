@@ -1,14 +1,24 @@
 import { useState } from 'react'
-import { ChevronRight, LoaderCircle } from 'lucide-react'
+import { Check, ChevronRight, ChevronsUpDown, LoaderCircle, User } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SearchInput } from '@/components/SearchInput'
 import { api, errMsg } from '@/lib/api'
 import { extIcon } from '@/lib/extIcons'
 import { useAction, useExtensionView } from '@/lib/queries'
+import { useRememberedOpen } from '@/lib/useRememberedOpen'
 import { cn } from '@/lib/utils'
 
 // Tonos que admiten los bloques (ver extensions/README.md). Clases completas para Tailwind.
@@ -105,15 +115,13 @@ function Blocks({ blocks, ctx, className }) {
 
 function Block({ block, ctx }) {
   if (block.type === 'text')
-    return (
-      <p className={cn('whitespace-pre-line', TONE_TEXT[block.tone])}>{block.text}</p>
-    )
-  if (block.type === 'heading')
-    return <h2 className="-mb-2 text-lg font-semibold">{block.text}</h2>
+    return <p className={cn('whitespace-pre-line', TONE_TEXT[block.tone])}>{block.text}</p>
+  if (block.type === 'heading') return <h2 className="-mb-2 text-lg font-semibold">{block.text}</h2>
   if (block.type === 'list') return <ListBlock block={block} ctx={ctx} />
   if (block.type === 'stats') return <StatsBlock block={block} />
   if (block.type === 'breakdown') return <BreakdownBlock block={block} />
   if (block.type === 'tabs') return <TabsBlock block={block} ctx={ctx} />
+  if (block.type === 'kanban') return <KanbanBlock block={block} ctx={ctx} />
   if (block.type === 'columns')
     return (
       <Blocks
@@ -224,14 +232,14 @@ function ListBlock({ block, ctx }) {
     [it.title, it.description, ...(it.badges ?? []).map((b) => badgeOf(b).label)].some((s) =>
       s?.toLowerCase().includes(q)
     )
-  const items = (block.items ?? []).filter(
-    (it) => !q || matches(it) || it.children?.some(matches)
-  )
+  const items = (block.items ?? []).filter((it) => !q || matches(it) || it.children?.some(matches))
 
   return (
     <div className="flex flex-col gap-3">
       {block.searchable && <SearchInput value={query} onChange={setQuery} placeholder="Filtrar…" />}
-      {!block.items?.length && <p className="text-muted-foreground">{block.empty || 'Sin elementos.'}</p>}
+      {!block.items?.length && (
+        <p className="text-muted-foreground">{block.empty || 'Sin elementos.'}</p>
+      )}
       {q && !items.length && (
         <p className="text-muted-foreground">Ningún elemento coincide con «{query}».</p>
       )}
@@ -302,7 +310,177 @@ function ItemChildren({ item, ctx }) {
   )
 }
 
-function ActionButton({ action, ctx, variant }) {
+// Tablero por columnas. Cada tarjeta lleva en `filterValues` los valores por los que se puede
+// filtrar (p. ej. personas asignadas); sus `children` también, para atenuar los que no coinciden.
+function KanbanBlock({ block, ctx }) {
+  const columns = block.columns ?? []
+  const cards = columns.flatMap((c) => c.items ?? [])
+  const options = [...new Set(cards.flatMap((it) => it.filterValues ?? []))].sort((a, b) =>
+    a.localeCompare(b)
+  )
+  const [saved, setFilter] = useRememberedOpen(
+    `kanban:${ctx.extId}/${ctx.viewId}/${ctx.projectId}`,
+    null
+  )
+  // Si el valor elegido ya no aparece (p. ej. en otro sprint), se muestran todas.
+  const filter = options.includes(saved) ? saved : null
+  const matches = (it) => !filter || it.filterValues?.includes(filter)
+
+  return (
+    <div className="flex flex-col gap-3">
+      {block.filter && (
+        <FilterCombobox
+          label={block.filter.label}
+          all={block.filter.all}
+          options={options}
+          value={filter}
+          onChange={setFilter}
+        />
+      )}
+      {!cards.length && <p className="text-muted-foreground">{block.empty || 'Sin elementos.'}</p>}
+      {cards.length > 0 && (
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {columns.map((col) => {
+            const items = (col.items ?? []).filter(matches)
+            return (
+              <div
+                key={col.id}
+                className="flex w-72 shrink-0 flex-col gap-2 rounded-xl border bg-muted/40 p-2"
+              >
+                <div className="flex items-center gap-2 px-1 pt-1">
+                  <span className={cn('size-2 rounded-full', TONE_BG[col.tone] || 'bg-primary')} />
+                  <span className="flex-1 truncate text-sm font-medium">{col.title}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span>
+                </div>
+                {items.map((it) => (
+                  <KanbanCard key={it.id} item={it} ctx={ctx} dim={(c) => !matches(c)} />
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function KanbanCard({ item, ctx, dim }) {
+  const [open, setOpen] = useState(item.childrenOpen ?? true)
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border bg-card px-3 py-2">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-sm font-medium">{item.title}</span>
+        <div className="-mt-1 -mr-2 flex shrink-0">
+          {item.actions?.map((a) => (
+            <ActionButton key={a.id} action={a} ctx={ctx} variant={a.variant || 'ghost'} small />
+          ))}
+        </div>
+      </div>
+      {item.badges?.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {item.badges.map(badgeOf).map((b) => (
+            <Badge key={b.label} variant="outline" className={TONE_BADGE[b.tone]}>
+              {b.label}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {item.description && (
+        <p className="truncate text-xs text-muted-foreground">{item.description}</p>
+      )}
+      {item.meta && <p className="text-xs text-muted-foreground">{item.meta}</p>}
+      {item.children?.length > 0 && (
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <CollapsibleTrigger className="group flex items-center gap-1 py-1 text-xs text-muted-foreground hover:text-foreground">
+            <ChevronRight className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
+            {item.childrenLabel || `Elementos (${item.children.length})`}
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ul className="flex flex-col gap-1 border-l pl-2">
+              {item.children.map((c) => {
+                // En la tarjeta no caben etiquetas: la primera (el estado) se pinta como un punto.
+                const state = badgeOf(c.badges?.[0] ?? '')
+                return (
+                  <li
+                    key={c.id}
+                    className={cn('flex items-center gap-2 text-xs', dim(c) && 'opacity-40')}
+                  >
+                    <span
+                      className={cn(
+                        'size-2 shrink-0 rounded-full',
+                        TONE_BG[state.tone] || TONE_BG.muted
+                      )}
+                      title={state.label}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate" title={c.title}>
+                        {c.title}
+                      </span>
+                      {c.meta && (
+                        <span className="block truncate text-muted-foreground">{c.meta}</span>
+                      )}
+                    </span>
+                    {c.actions?.map((a) => (
+                      <ActionButton key={a.id} action={a} ctx={ctx} variant="ghost" small />
+                    ))}
+                  </li>
+                )
+              })}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </div>
+  )
+}
+
+// Desplegable con búsqueda para elegir un valor del filtro (o todos).
+function FilterCombobox({ label, all = 'Todos', options, value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const pick = (v) => {
+    onChange(v)
+    setOpen(false)
+  }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          title={label}
+          className="w-64 justify-between"
+        >
+          <User />
+          <span className="flex-1 truncate text-left">{value ?? all}</span>
+          <ChevronsUpDown className="opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0" align="start">
+        <Command>
+          <CommandInput placeholder={`${label || 'Filtrar'}…`} />
+          <CommandList>
+            <CommandEmpty>Sin coincidencias.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem value={all} onSelect={() => pick(null)}>
+                <Check className={cn(value == null ? 'opacity-100' : 'opacity-0')} />
+                {all}
+              </CommandItem>
+              {options.map((o) => (
+                <CommandItem key={o} value={o} onSelect={() => pick(o)}>
+                  <Check className={cn(o === value ? 'opacity-100' : 'opacity-0')} />
+                  {o}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function ActionButton({ action, ctx, variant, small }) {
   const run = useAction(
     () => api.extensions.action(ctx.extId, ctx.viewId, action.id, action.args, ctx.projectId),
     { onSuccess: (res) => res?.toast && toast.success(res.toast) }
@@ -312,7 +490,7 @@ function ActionButton({ action, ctx, variant }) {
   return (
     <Button
       variant={variant}
-      size={action.label ? 'default' : 'icon'}
+      size={action.label ? 'default' : small ? 'icon-xs' : 'icon'}
       title={action.title || action.label}
       disabled={run.isPending}
       onClick={() => run.mutate()}

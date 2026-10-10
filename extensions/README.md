@@ -68,7 +68,7 @@ pantalla de cada proyecto. Ambas se registran igual con `ctx.views.register`. Un
 proyecto recibe en `render(context)` y `action(id, args, context)` el proyecto que se está viendo:
 `context.project = { id, name, repos: [{ id, name, path }] }` (no hace falta el permiso `projects`).
 
-Iconos disponibles: ver `apps/claude-launcher/src/renderer/src/lib/extIcons.js`.
+Iconos disponibles (p. ej. `layout-dashboard`, `kanban`): ver `apps/claude-launcher/src/renderer/src/lib/extIcons.js`.
 
 ## Código (`index.js`)
 
@@ -123,6 +123,7 @@ Una acción sin `label` se muestra como botón de icono (usa `title` como toolti
 | `breakdown` | `title`, `items: [{ label, value, tone? }]`, `empty?`: barra apilada con leyenda |
 | `columns` | `blocks`: otros bloques en columnas |
 | `tabs` | `tabs: [{ id, label, blocks }]`: pestañas, cada una con sus bloques |
+| `kanban` | `columns: [{ id, title, tone?, items }]`, `filter?: { label, all? }`, `empty?`. Los `items` son como los de `list` (con `children`); con `filter`, cada tarjeta indica en `filterValues: [...]` los valores por los que se puede filtrar y los `children` que no coinciden se atenúan |
 
 Tonos: `muted`, `info`, `success`, `warning`, `error`.
 

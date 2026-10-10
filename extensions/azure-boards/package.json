@@ -2,7 +2,7 @@
   "name": "azure-boards",
   "displayName": "Azure Boards",
   "version": "0.0.0",
-  "description": "Añade a cada proyecto una pestaña Board con el sprint actual de Azure DevOps: historias, tareas y bugs por estado, y tus historias asignadas.",
+  "description": "Añade a cada proyecto un dashboard del sprint de Azure DevOps (estado, tus historias y sus tareas) y un kanban de las historias del sprint filtrable por persona.",
   "main": "index.js",
   "private": true,
   "scripts": {
@@ -21,8 +21,13 @@
     },
     "projectTabs": [
       {
-        "id": "board",
-        "title": "Board",
+        "id": "dashboard",
+        "title": "Sprint",
+        "icon": "layout-dashboard"
+      },
+      {
+        "id": "kanban",
+        "title": "Kanban",
         "icon": "kanban"
       }
     ]

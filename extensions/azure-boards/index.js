@@ -1,12 +1,12 @@
-// Extensión Azure Boards: pestaña «Board» en cada proyecto con el sprint actual del equipo en
-// Azure DevOps. Usa la sesión de Azure CLI (`az login`), así que no guarda tokens.
+// Extensión Azure Boards: pestañas «Sprint» (dashboard) y «Kanban» en cada proyecto con el
+// sprint del equipo en Azure DevOps. Usa la sesión de Azure CLI (`az login`), así que no guarda
+// tokens.
 // El proyecto de Azure DevOps se deduce del remoto git de sus repos o se elige a mano.
 
 // Id de recurso de Azure DevOps en Microsoft Entra ID (fijo para todos los tenants).
 const RESOURCE = '499b84ac-1321-427f-aa17-267ca6975798'
 const API = 'api-version=7.1'
 const BATCH = 200
-const MINE_TOP = 100
 
 const STORY = 'Microsoft.RequirementCategory'
 const TASK = 'Microsoft.TaskCategory'
@@ -273,32 +273,6 @@ exports.activate = (ctx) => {
     return { ...sprint, items: await workItems(link, ids) }
   }
 
-  // Historias no cerradas de todo el proyecto asignadas al usuario de `az`.
-  async function openStories(link, md) {
-    const closed = (md.categories[STORY] ?? [])
-      .flatMap((t) => md.states[t] ?? [])
-      .filter((s) => s.category === 'Completed' || s.category === 'Removed')
-      .map((s) => wiql(s.name))
-    const query = [
-      'SELECT [System.Id] FROM WorkItems',
-      'WHERE [System.TeamProject] = @project',
-      'AND [System.AssignedTo] = @me',
-      `AND [System.WorkItemType] IN GROUP ${wiql(STORY)}`,
-      closed.length && `AND [System.State] NOT IN (${[...new Set(closed)].join(', ')})`,
-      'ORDER BY [System.ChangedDate] DESC'
-    ]
-      .filter(Boolean)
-      .join(' ')
-    const { workItems: refs } = await api(`${base(link)}/_apis/wit/wiql?$top=${MINE_TOP}&${API}`, {
-      query
-    })
-    const stories = await workItems(
-      link,
-      refs.map((r) => r.id)
-    )
-    return withTasks(link, md, stories)
-  }
-
   // Añade a cada historia sus tareas (sin las eliminadas).
   async function withTasks(link, md, stories) {
     const tasks = await childTasks(link, stories)
@@ -423,46 +397,78 @@ exports.activate = (ctx) => {
     }
   }
 
-  // withOwner: muestra el responsable (en la pestaña de historias de otros).
-  function storyList(md, link, stories, sprint, empty, withOwner) {
+  const ownerOf = (it) => it.assignedTo || 'Sin asignar'
+  const tasksDone = (md, story) =>
+    story.tasks.length &&
+    `${story.tasks.filter((t) => isDone(md, t)).length}/${story.tasks.length} tareas completadas`
+  const hoursLeft = (md, story) =>
+    story.tasks.reduce((n, t) => n + (isDone(md, t) ? 0 : t.remaining), 0)
+  const byFlow = (md) => (a, b) => order(md, a) - order(md, b) || a.id - b.id
+
+  // Tareas de una historia como subelementos (lista y kanban).
+  const taskItems = (md, link, story) =>
+    story.tasks.sort(byFlow(md)).map((t) => ({
+      id: String(t.id),
+      title: `#${t.id} ${t.title}`,
+      badges: [{ label: t.state, tone: stateInfo(md, t).tone }],
+      meta: [ownerOf(t), t.remaining && `${t.remaining} h restantes`].filter(Boolean).join(' · '),
+      filterValues: [ownerOf(t)],
+      actions: [openAction(link, t)]
+    }))
+
+  function storyList(md, link, stories, empty) {
     return {
       type: 'list',
       searchable: stories.length > 5,
       empty,
-      items: stories.map((it) => ({
+      items: stories.sort(byFlow(md)).map((it) => ({
         id: String(it.id),
         title: `#${it.id} ${it.title}`,
-        badges: [
-          { label: it.state, tone: stateInfo(md, it).tone },
-          !withOwner &&
-            sprint &&
-            it.iteration === sprint.path && { label: sprint.name, tone: 'info' }
-        ].filter(Boolean),
-        description: withOwner
-          ? `${it.assignedTo || 'Sin asignar'} · ${it.iteration}`
-          : it.iteration,
-        meta: [
-          `Actualizada el ${formatDate(it.changed)}`,
-          it.tasks.length &&
-            `${it.tasks.filter((t) => isDone(md, t)).length}/${it.tasks.length} tareas completadas`
-        ]
+        badges: [{ label: it.state, tone: stateInfo(md, it).tone }],
+        meta: [`Actualizada el ${formatDate(it.changed)}`, tasksDone(md, it)]
           .filter(Boolean)
           .join(' · '),
         childrenLabel: `Tareas (${it.tasks.length})`,
-        // Las historias de otros son muchas: sus tareas empiezan plegadas.
-        childrenOpen: !withOwner,
-        children: it.tasks
-          .sort((a, b) => order(md, a) - order(md, b) || a.id - b.id)
-          .map((t) => ({
-            id: String(t.id),
-            title: `#${t.id} ${t.title}`,
-            badges: [{ label: t.state, tone: stateInfo(md, t).tone }],
-            meta: [t.assignedTo || 'Sin asignar', t.remaining && `${t.remaining} h restantes`]
+        children: taskItems(md, link, it),
+        actions: [openAction(link, it)]
+      }))
+    }
+  }
+
+  // Una columna por estado de las historias, en el orden del flujo (sin «Removed»).
+  function kanban(md, link, stories) {
+    const states = new Map()
+    for (const type of md.categories[STORY] ?? [])
+      for (const s of md.states[type] ?? [])
+        if (s.category !== 'Removed' && !states.has(s.name))
+          states.set(s.name, TONES[s.category] ?? 'muted')
+    // Por si alguna historia está en un estado que no devuelve la API.
+    for (const it of stories) if (!states.has(it.state)) states.set(it.state, 'muted')
+
+    return {
+      type: 'kanban',
+      filter: { label: 'Asignado a', all: 'Todas las personas' },
+      empty: 'No hay historias de usuario en el sprint.',
+      columns: [...states].map(([state, tone]) => ({
+        id: state,
+        title: state,
+        tone,
+        items: stories
+          .filter((it) => it.state === state)
+          .sort((a, b) => a.id - b.id)
+          .map((it) => ({
+            id: String(it.id),
+            title: `#${it.id} ${it.title}`,
+            description: ownerOf(it),
+            meta: [tasksDone(md, it), hoursLeft(md, it) && `${hoursLeft(md, it)} h restantes`]
               .filter(Boolean)
               .join(' · '),
-            actions: [openAction(link, t)]
-          })),
-        actions: [openAction(link, it)]
+            // Se filtra por el responsable de la historia y por los de sus tareas.
+            filterValues: [...new Set([ownerOf(it), ...it.tasks.map(ownerOf)])],
+            childrenLabel: `Tareas (${it.tasks.length})`,
+            children: taskItems(md, link, it),
+            actions: [openAction(link, it)]
+          }))
       }))
     }
   }
@@ -486,133 +492,131 @@ exports.activate = (ctx) => {
     return null
   }
 
-  async function render({ project }) {
+  // Datos comunes a las dos pestañas: vínculo, equipo, sprint elegido y sus elementos.
+  async function load(project) {
     const link = await linkOf(project)
-    if (!link)
-      return {
-        actions: [linkAction],
-        blocks: [
-          {
-            type: 'text',
-            tone: 'muted',
-            text: 'Ningún repositorio de este proyecto tiene un remoto de Azure DevOps.\nVincúlalo a mano a un proyecto de Azure DevOps para ver su board.'
-          }
-        ]
-      }
-
+    if (!link) return null
     const team = await teamOf(link)
     const [md, sprint, me] = await Promise.all([
       metadata(link),
       selectedSprint(link, team, project.id),
       myId(link)
     ])
-
     const of = (cat) => (it) => (md.categories[cat] ?? []).includes(it.type)
     const items = sprint?.items ?? []
-    const stories = items.filter(of(STORY))
-    const tasks = items.filter(of(TASK))
-    const bugs = items.filter(of(BUG))
-    const live = (it) => stateInfo(md, it).category !== 'Removed'
-    const [mine, others] = await Promise.all([
-      openStories(link, md),
-      withTasks(
-        link,
-        md,
-        stories.filter((it) => live(it) && it.assignedId !== me)
-      )
-    ])
     const boardUrl = sprint
       ? `${base(link)}/_sprints/taskboard/${enc(team)}/${sprint.path.split('\\').map(enc).join('/')}`
       : `${base(link)}/_boards/board/t/${enc(team)}`
-
     return {
-      description: `${link.org} / ${link.project} · equipo ${team}`,
-      actions: [
-        {
-          id: 'sprint',
-          label: sprint ? sprint.name : 'Elegir sprint',
-          icon: 'calendar',
-          title: 'Elegir sprint'
-        },
-        { id: 'open', label: 'Abrir board', icon: 'external-link', args: { url: boardUrl } },
-        { id: 'team', icon: 'users', title: 'Cambiar de equipo' },
-        { id: 'link', icon: 'link', title: 'Vincular a otro proyecto de Azure DevOps' },
-        refresh
-      ],
-      blocks: [
-        sprint
-          ? sprintStats(md, sprint, stories, tasks, bugs)
-          : {
-              type: 'text',
-              tone: 'muted',
-              text: `El equipo ${team} no tiene un sprint en curso. Elige uno con el botón de sprint.`
-            },
-        sprint && {
-          type: 'columns',
-          blocks: [
-            breakdown(md, 'Historias por estado', stories, 'Sin historias en el sprint.'),
-            breakdown(md, 'Tareas por estado', tasks, 'Sin tareas en el sprint.'),
-            breakdown(md, 'Bugs por estado', bugs, 'Sin bugs en el sprint.')
-          ]
-        },
-        { type: 'heading', text: 'Historias de usuario' },
-        {
-          type: 'tabs',
-          tabs: [
-            {
-              id: 'mine',
-              label: `Asignadas a mí (${mine.length})`,
-              blocks: [
-                storyList(
-                  md,
-                  link,
-                  mine,
-                  sprint,
-                  'No tienes historias de usuario abiertas en este proyecto.'
-                )
-              ]
-            },
-            {
-              id: 'others',
-              label: `Otras del sprint (${others.length})`,
-              blocks: [
-                sprint
-                  ? storyList(
-                      md,
-                      link,
-                      others,
-                      sprint,
-                      `No hay más historias de usuario en ${sprint.name}.`,
-                      true
-                    )
-                  : { type: 'text', tone: 'muted', text: 'Elige un sprint para ver sus historias.' }
-              ]
-            }
-          ]
-        }
-      ].filter(Boolean)
+      link,
+      team,
+      md,
+      sprint,
+      me,
+      boardUrl,
+      stories: items.filter(of(STORY)),
+      tasks: items.filter(of(TASK)),
+      bugs: items.filter(of(BUG)),
+      live: (it) => stateInfo(md, it).category !== 'Removed'
     }
   }
 
-  ctx.views.register('board', {
-    async render(context) {
-      try {
-        return await render(context)
-      } catch (err) {
-        console.error(err.message)
-        return {
-          actions: [linkAction, refresh],
-          blocks: [{ type: 'text', tone: 'error', text: azError(err) || err.message }]
-        }
+  const unlinked = {
+    actions: [linkAction],
+    blocks: [
+      {
+        type: 'text',
+        tone: 'muted',
+        text: 'Ningún repositorio de este proyecto tiene un remoto de Azure DevOps.\nVincúlalo a mano a un proyecto de Azure DevOps para ver su board.'
       }
-    },
+    ]
+  }
 
-    async action(id, args, { project }) {
-      if (id === 'open') return ctx.ui.openExternal(args.url)
-      if (id === 'link') return chooseLink(project)
-      if (id === 'team') return chooseTeam(project)
-      if (id === 'sprint') return chooseSprint(project)
-      if (id === 'refresh') meta.clear()
-    }
+  const noSprint = (team) => ({
+    type: 'text',
+    tone: 'muted',
+    text: `El equipo ${team} no tiene un sprint en curso. Elige uno con el botón de sprint.`
   })
+
+  const header = ({ link, team, sprint, boardUrl }) => ({
+    description: `${link.org} / ${link.project} · equipo ${team}`,
+    actions: [
+      {
+        id: 'sprint',
+        label: sprint ? sprint.name : 'Elegir sprint',
+        icon: 'calendar',
+        title: 'Elegir sprint'
+      },
+      { id: 'open', label: 'Abrir board', icon: 'external-link', args: { url: boardUrl } },
+      { id: 'team', icon: 'users', title: 'Cambiar de equipo' },
+      { id: 'link', icon: 'link', title: 'Vincular a otro proyecto de Azure DevOps' },
+      refresh
+    ]
+  })
+
+  async function renderDashboard({ project }) {
+    const data = await load(project)
+    if (!data) return unlinked
+    const { link, team, md, sprint, me, stories, tasks, bugs, live } = data
+    const mine = await withTasks(
+      link,
+      md,
+      stories.filter((it) => live(it) && it.assignedId === me)
+    )
+
+    return {
+      ...header(data),
+      blocks: sprint
+        ? [
+            sprintStats(md, sprint, stories, tasks, bugs),
+            {
+              type: 'columns',
+              blocks: [
+                breakdown(md, 'Historias por estado', stories, 'Sin historias en el sprint.'),
+                breakdown(md, 'Tareas por estado', tasks, 'Sin tareas en el sprint.'),
+                breakdown(md, 'Bugs por estado', bugs, 'Sin bugs en el sprint.')
+              ]
+            },
+            { type: 'heading', text: `Mis historias en ${sprint.name} (${mine.length})` },
+            storyList(md, link, mine, `No tienes historias de usuario asignadas en ${sprint.name}.`)
+          ]
+        : [noSprint(team)]
+    }
+  }
+
+  async function renderKanban({ project }) {
+    const data = await load(project)
+    if (!data) return unlinked
+    const { link, team, md, sprint, stories, live } = data
+    return {
+      ...header(data),
+      blocks: sprint
+        ? [kanban(md, link, await withTasks(link, md, stories.filter(live)))]
+        : [noSprint(team)]
+    }
+  }
+
+  async function action(id, args, { project }) {
+    if (id === 'open') return ctx.ui.openExternal(args.url)
+    if (id === 'link') return chooseLink(project)
+    if (id === 'team') return chooseTeam(project)
+    if (id === 'sprint') return chooseSprint(project)
+    if (id === 'refresh') meta.clear()
+  }
+
+  // Los errores de az se muestran en la propia pestaña, con la opción de vincular otro proyecto.
+  const safe = (render) => async (context) => {
+    try {
+      return await render(context)
+    } catch (err) {
+      console.error(err.message)
+      return {
+        actions: [linkAction, refresh],
+        blocks: [{ type: 'text', tone: 'error', text: azError(err) || err.message }]
+      }
+    }
+  }
+
+  ctx.views.register('dashboard', { render: safe(renderDashboard), action })
+  ctx.views.register('kanban', { render: safe(renderKanban), action })
 }
