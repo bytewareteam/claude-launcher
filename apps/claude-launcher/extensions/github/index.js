@@ -65,7 +65,7 @@ exports.activate = (ctx) => {
               meta: `actualizado ${timeAgo(r.updatedAt)}`,
               actions: [
                 { id: 'open', icon: 'external-link', title: 'Abrir en GitHub', args: { url: r.url } },
-                { id: 'clone', label: 'Clonar', icon: 'download', args: { repo: r.nameWithOwner, name: r.name } }
+                { id: 'clone', label: 'Clonar', icon: 'download', args: { repo: r.nameWithOwner, name: r.name, url: r.url } }
               ]
             }))
           }
@@ -95,7 +95,7 @@ exports.activate = (ctx) => {
     if (owner) await ctx.storage.set('owner', owner === user ? null : owner)
   }
 
-  async function clone({ repo, name }) {
+  async function clone({ repo, name, url }) {
     const parent = await ctx.ui.pickFolder({
       title: `¿Dónde clonar ${repo}?`,
       defaultPath: await ctx.storage.get('cloneDir')
@@ -104,7 +104,9 @@ exports.activate = (ctx) => {
     await ctx.storage.set('cloneDir', parent)
     const dest = join(parent, name)
     if (existsSync(dest)) throw new Error(`Ya existe ${dest}`)
-    await ctx.exec('gh', ['repo', 'clone', repo, dest], { timeout: 15 * 60_000 })
+    // Con la URL HTTPS gh no usa su `git_protocol` (que puede ser ssh sin clave configurada)
+    // y autentica a git con su propio token.
+    await ctx.exec('gh', ['repo', 'clone', url, dest], { timeout: 15 * 60_000 })
 
     const projects = await ctx.projects.list()
     const projectId = await ctx.ui.quickPick(
