@@ -1,3 +1,13 @@
+## 1.2.0 (2026-10-10)
+
+### 🚀 Features
+
+- tutorial guiado para nuevas instalaciones ([ddb5077](https://github.com/bytewareteam/claude-launcher/commit/ddb5077))
+
+### ❤️ Thank You
+
+- Willian Monoga @bytewareteam
+
 ## 1.1.0 (2026-10-10)
 
 ### 🚀 Features
