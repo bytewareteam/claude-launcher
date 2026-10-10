@@ -3,11 +3,13 @@ import { toast } from 'sonner'
 import {
   Check,
   Code,
+  Copy,
   FolderOpen,
   FolderSearch,
   KeyRound,
   Lock,
   LockOpen,
+  Plug,
   Puzzle,
   RotateCcw,
   ShieldPlus
@@ -20,13 +22,14 @@ import { ExtensionsPage } from '@/components/ExtensionsPage'
 import { useAskVault } from '@/components/VaultProvider'
 import { api } from '@/lib/api'
 import { ClaudeIcon, ideIcon } from '@/lib/brandIcons'
-import { useAction, useIdes, useSettings, useVaultStatus } from '@/lib/queries'
+import { useAction, useIdes, useMcpStatus, useSettings, useVaultStatus } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 
 const SECTIONS = [
   { id: 'claude', label: 'Claude', icon: ClaudeIcon },
   { id: 'ide', label: 'IDE', icon: Code },
   { id: 'vault', label: 'Bóveda', icon: KeyRound },
+  { id: 'mcp', label: 'MCP', icon: Plug },
   { id: 'extensions', label: 'Extensiones', icon: Puzzle }
 ]
 const TABS = SECTIONS.map((s) => s.id)
@@ -57,8 +60,8 @@ export function SettingsPage({ initialTab }) {
       <header className="mb-5">
         <h1 className="text-2xl font-semibold">Configuración</h1>
         <p className="text-sm text-muted-foreground">
-          Cómo se abre Claude, el IDE por defecto, la bóveda de secretos y las extensiones
-          instaladas.
+          Cómo se abre Claude, el IDE por defecto, la bóveda de secretos, el servidor MCP y las
+          extensiones instaladas.
         </p>
       </header>
       <div className="flex gap-6">
@@ -85,6 +88,7 @@ export function SettingsPage({ initialTab }) {
           {tab === 'claude' && <ClaudeSettings />}
           {tab === 'ide' && <IdeSettings />}
           {tab === 'vault' && <VaultSettings />}
+          {tab === 'mcp' && <McpSettings />}
           {tab === 'extensions' && <ExtensionsPage embedded />}
         </div>
       </div>
@@ -341,6 +345,127 @@ function VaultSettings() {
           </Button>
         </div>
       </form>
+    </div>
+  )
+}
+
+function McpSettings() {
+  const { data: settings } = useSettings()
+  const { data: status } = useMcpStatus()
+  const [enabled, setEnabled] = useState(true)
+  const [port, setPort] = useState('')
+  const [autoConnect, setAutoConnect] = useState(true)
+  const save = useAction(api.settings.set, { onSuccess: saved })
+  const regenerate = useAction(api.mcp.regenerateToken, {
+    onSuccess: () => toast.success('Token nuevo generado: vuelve a añadir el servidor en Claude')
+  })
+
+  useEffect(() => {
+    if (!settings) return
+    setEnabled(settings.mcp.enabled)
+    setPort(String(settings.mcp.port))
+    setAutoConnect(settings.mcp.autoConnect)
+  }, [settings])
+
+  if (!settings || !status) return null
+  const dirty =
+    enabled !== settings.mcp.enabled ||
+    Number(port) !== settings.mcp.port ||
+    autoConnect !== settings.mcp.autoConnect
+  const command = (token) =>
+    `claude mcp add --transport http --scope user ${status.name} ${status.url} --header "Authorization: Bearer ${token}"`
+  const copy = async () => {
+    await navigator.clipboard.writeText(command(status.token))
+    toast.success('Comando copiado')
+  }
+
+  return (
+    <div className="flex max-w-2xl flex-col gap-4">
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault()
+          save.mutate({ mcp: { enabled, port: Number(port), autoConnect } })
+        }}
+      >
+        <Card
+          title="Servidor MCP"
+          description="Permite que Claude Code consulte tus proyectos, repos y worktrees, abra sesiones y lance «Iniciar desarrollo». Solo escucha en este equipo y nunca da acceso a la bóveda."
+        >
+          <div className="mb-4 flex items-center gap-2">
+            <Badge
+              variant={status.running ? 'default' : status.error ? 'destructive' : 'secondary'}
+            >
+              {status.running
+                ? 'Activo'
+                : status.error
+                  ? 'Error'
+                  : status.enabled
+                    ? 'Arrancando…'
+                    : 'Apagado'}
+            </Badge>
+            {status.running && (
+              <span className="font-mono text-xs text-muted-foreground">{status.url}</span>
+            )}
+            {status.error && <span className="text-xs text-destructive">{status.error}</span>}
+          </div>
+          <div className="flex flex-col gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+              />
+              Activar el servidor MCP
+            </label>
+            <Field
+              label="Puerto"
+              hint="Entre 1024 y 65535. Si lo cambias, vuelve a añadirlo en Claude."
+            >
+              <Input
+                type="number"
+                min={1024}
+                max={65535}
+                className="w-32"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+              />
+            </Field>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={autoConnect}
+                onChange={(e) => setAutoConnect(e.target.checked)}
+              />
+              Conectar automáticamente las sesiones que abre la app (--mcp-config)
+            </label>
+          </div>
+        </Card>
+        <div>
+          <Button type="submit" disabled={!dirty || save.isPending}>
+            Guardar
+          </Button>
+        </div>
+      </form>
+
+      <Card
+        title="Usarlo en cualquier sesión"
+        description="Ejecuta este comando una vez para que todas tus sesiones de Claude Code tengan el servidor, también las que no abres desde la app."
+      >
+        <p className="mb-3 rounded-md bg-muted px-3 py-2 font-mono text-xs break-all text-muted-foreground">
+          {command('•'.repeat(12))}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={copy}>
+            <Copy /> Copiar comando
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => regenerate.mutate()}>
+            <RotateCcw /> Generar token nuevo
+          </Button>
+        </div>
+      </Card>
     </div>
   )
 }

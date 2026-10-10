@@ -10,6 +10,7 @@ Claude Launcher es una app de escritorio **Electron** (solo Windows por ahora) q
 - Lista los **worktrees** de cada repo y su estado frente a una rama base.
 - Guarda **variables de entorno secretas** por proyecto/repo en una bóveda **KeePass (.kdbx)**.
 - Abre **Claude Code** en una pestaña de Windows Terminal con solo esas variables inyectadas.
+- Ofrece un **servidor MCP** local para que las sesiones de Claude Code consulten proyectos y worktrees y pidan acciones a la app.
 
 ## Monorepo
 
@@ -101,6 +102,7 @@ src/
     vault.js     Bóveda KeePass (kdbxweb + Argon2 vía hash-wasm). Autobloqueo configurable (15 min por defecto).
     terminal.js  Lanza `wt.exe … claude` con un entorno filtrado.
     dev.js       «Iniciar desarrollo»: ruta del worktree, instalación de dependencias y contexto para Claude.
+    mcp.js       Servidor MCP (Streamable HTTP, sin sesiones) en 127.0.0.1 con token; sus herramientas usan `mcpApp` de index.js.
     extensions.js       Instala/desinstala extensiones, guarda su consentimiento y las arranca.
     extension-packages.js  Catálogo remoto, descarga verificada (sha256) y extracción segura de .zip.
     extension-host.js   Corre dentro del utilityProcess de cada extensión (entrada aparte de Vite).
@@ -146,11 +148,13 @@ solo se activan tras aceptar sus permisos. En desarrollo carga también las de `
 - El portapapeles se limpia tras copiar un secreto (30 s por defecto, 5–300 s en Configuración).
 - No añadas `nodeIntegration` ni desactives `contextIsolation`.
 - Las extensiones no reciben secretos ni código propio en el renderer (UI declarativa).
+- El servidor MCP solo escucha en `127.0.0.1`, exige el token (`Authorization: Bearer`), rechaza peticiones con `Origin` y nunca expone la bóveda: no añadas herramientas que devuelvan secretos ni nombres de variables.
 
 ## Datos del usuario
 
 Se guardan en `%APPDATA%/claude-launcher/`:
 - `data.json` — proyectos, repos e historial de sesiones (electron-store).
 - `secrets.kdbx` — bóveda por defecto (la ruta se puede cambiar a un .kdbx existente).
+- `mcp.json` — configuración MCP (URL y token) que reciben las sesiones abiertas desde la app con `--mcp-config`.
 
 No escribas fixtures ni datos reales en el repositorio.

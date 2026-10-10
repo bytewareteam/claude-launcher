@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
-import { join, basename } from 'path'
-import { existsSync, readFileSync } from 'fs'
-import { randomUUID } from 'crypto'
+import { join, basename, resolve } from 'path'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { randomBytes, randomUUID } from 'crypto'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import Store from 'electron-store'
 import dotenv from 'dotenv'
@@ -23,6 +23,7 @@ import { claudeOptions } from './claude-cli'
 import * as dev from './dev'
 import * as ide from './ide'
 import * as extensions from './extensions'
+import * as mcp from './mcp'
 import icon from '../../resources/icon.png?asset'
 
 // Misma carpeta de datos en desarrollo y en la app instalada
@@ -37,14 +38,16 @@ const DEFAULT_BASE_BRANCH = 'origin/develop'
 // Configuración editable desde la pantalla «Configuración».
 const DEFAULT_SETTINGS = {
   claude: { args: '', newWindow: false },
-  vault: { autoLockMinutes: 15, clipboardSeconds: 30 }
+  vault: { autoLockMinutes: 15, clipboardSeconds: 30 },
+  mcp: { enabled: true, port: 47821, autoConnect: true }
 }
 
 function settings() {
   const saved = store.get('settings', {})
   return {
     claude: { ...DEFAULT_SETTINGS.claude, ...saved.claude },
-    vault: { ...DEFAULT_SETTINGS.vault, ...saved.vault }
+    vault: { ...DEFAULT_SETTINGS.vault, ...saved.vault },
+    mcp: { ...DEFAULT_SETTINGS.mcp, ...saved.mcp }
   }
 }
 
@@ -72,10 +75,23 @@ function updateSettings(patch = {}) {
     if (autoLockMinutes !== undefined)
       next.vault.autoLockMinutes = clampInt(autoLockMinutes, 1, 240, 'El autobloqueo')
     if (clipboardSeconds !== undefined)
-      next.vault.clipboardSeconds = clampInt(clipboardSeconds, 5, 300, 'La limpieza del portapapeles')
+      next.vault.clipboardSeconds = clampInt(
+        clipboardSeconds,
+        5,
+        300,
+        'La limpieza del portapapeles'
+      )
   }
+  if (patch.mcp) {
+    const { enabled, port, autoConnect } = patch.mcp
+    if (enabled !== undefined) next.mcp.enabled = !!enabled
+    if (port !== undefined) next.mcp.port = clampInt(port, 1024, 65535, 'El puerto')
+    if (autoConnect !== undefined) next.mcp.autoConnect = !!autoConnect
+  }
+  const mcpChanged = JSON.stringify(next.mcp) !== JSON.stringify(settings().mcp)
   store.set('settings', next)
   vault.setAutoLockMinutes(next.vault.autoLockMinutes)
+  if (mcpChanged) startMcp()
   return next
 }
 
@@ -206,13 +222,13 @@ ipcMain.handle('worktree:remove', (_e, repoPath, wtPath, force) =>
 
 // Abre Claude con las variables de la bóveda del scope (si está desbloqueada) y lo apunta en el
 // historial. Devuelve cuántas variables se inyectaron.
-function launchClaude(dir, title, scope, extraArgs) {
+function launchClaude(dir, title, scope, extraArgs = []) {
   let env = {}
   if (scope && vault.isUnlocked()) {
     const project = resolveScope({ projectId: scope.projectId })
     env = vault.envFor(project, scope.repoId ? resolveScope(scope) : null)
   }
-  openClaude(dir, title, env, settings().claude, extraArgs)
+  openClaude(dir, title, env, settings().claude, [...mcpArgs(), ...extraArgs])
   // Historial de sesiones para la pantalla de inicio (últimas 500).
   const launch = { at: new Date().toISOString(), dir, title, ...scope }
   store.set('launches', [launch, ...store.get('launches')].slice(0, 500))
@@ -259,7 +275,10 @@ ipcMain.handle('dev:open', async (_e, id) => {
   const mode = /--permission-mode/.test(settings().claude.args) ? [] : ['--permission-mode', 'plan']
   const repo = findRepo(req.projectId, req.repoId)
   const scope = { projectId: req.projectId, repoId: req.repoId }
-  const n = launchClaude(req.path, `${repo.name}:${req.branch}`, scope, [...mode, dev.planPrompt(file)])
+  const n = launchClaude(req.path, `${repo.name}:${req.branch}`, scope, [
+    ...mode,
+    dev.planPrompt(file)
+  ])
   devRequests.delete(id)
   return n
 })
@@ -356,6 +375,115 @@ ipcMain.handle('vault:importEnv', async (e, scope) => {
   const vars = Object.entries(parsed).map(([key, value]) => ({ key, value }))
   if (vars.length) await vault.setVars(resolveScope(scope), vars)
   return vars.length
+})
+
+// --- Servidor MCP ----------------------------------------------------------------
+// Las sesiones de Claude hablan con la app por MCP (ver mcp.js). Sin acceso a la bóveda.
+
+const mcpToken = () => {
+  if (!store.get('mcpToken')) store.set('mcpToken', randomBytes(32).toString('hex'))
+  return store.get('mcpToken')
+}
+const mcpConfigPath = () => join(app.getPath('userData'), 'mcp.json')
+
+// Archivo que reciben las sesiones abiertas desde la app con --mcp-config.
+function writeMcpConfig(port) {
+  const config = {
+    mcpServers: {
+      [mcp.SERVER_NAME]: {
+        type: 'http',
+        url: mcp.urlFor(port),
+        headers: { Authorization: `Bearer ${mcpToken()}` }
+      }
+    }
+  }
+  writeFileSync(mcpConfigPath(), JSON.stringify(config, null, 2))
+}
+
+// Con `=`: --mcp-config admite varios valores y se comería el prompt que va detrás.
+function mcpArgs() {
+  const { enabled, autoConnect } = settings().mcp
+  return enabled && autoConnect && existsSync(mcpConfigPath())
+    ? [`--mcp-config=${mcpConfigPath()}`]
+    : []
+}
+
+// Repo registrado (o worktree suyo) que contiene exactamente `dir`.
+async function findByPath(dir) {
+  const target = resolve(dir).toLowerCase()
+  const all = projects().flatMap((p) => p.repos.map((r) => ({ project: p, repo: r })))
+  const same = (path) => resolve(path).toLowerCase() === target
+  const direct = all.find(({ repo }) => same(repo.path))
+  if (direct) return { ...direct, branch: null }
+  for (const entry of all) {
+    const wts = await listWorktrees(entry.repo.path).catch(() => [])
+    const wt = wts.find((w) => w.path && same(w.path))
+    if (wt) return { ...entry, branch: wt.branch ?? null, path: wt.path }
+  }
+  throw new Error(`${dir} no es un repositorio registrado ni uno de sus worktrees.`)
+}
+
+const focusWindow = () => {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (!win) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+const mcpApp = {
+  projects: () =>
+    projects().map(({ id, name, repos }) => ({
+      id,
+      name,
+      repos: repos.map(({ id, name, path, baseBranch }) => ({ id, name, path, baseBranch }))
+    })),
+  worktrees: async ({ projectId, repoId, includeStatus }) => {
+    const repo = findRepo(projectId, repoId)
+    const list = await listWorktrees(repo.path)
+    if (!includeStatus) return list
+    const base = repo.baseBranch || DEFAULT_BASE_BRANCH
+    return Promise.all(
+      list.map(async (w) => (w.bare ? w : { ...w, status: await worktreeStatus(w.path, base) }))
+    )
+  },
+  launches: (limit) => store.get('launches').slice(0, limit),
+  openClaude: async ({ path, title }) => {
+    const { project, repo, branch, path: wtPath } = await findByPath(path)
+    const dir = wtPath || repo.path
+    const n = launchClaude(dir, title || (branch ? `${repo.name}:${branch}` : repo.name), {
+      projectId: project.id,
+      repoId: repo.id
+    })
+    return `Sesión abierta en ${dir} con ${n} variable(s) de la bóveda.`
+  },
+  startDevelopment: (request) => {
+    hostApi['dev.start']({ displayName: 'Claude Code' }, request)
+    focusWindow()
+  },
+  openIde: async (path) => {
+    const { repo, path: wtPath } = await findByPath(path)
+    return ide.open(wtPath || repo.path, store.get('ide'))
+  },
+  notify: (message, kind) => broadcast('ext:toast', { from: 'Claude Code', message, kind })
+}
+
+function startMcp() {
+  mcp.stop()
+  const { enabled, port } = settings().mcp
+  if (!enabled) return
+  writeMcpConfig(port)
+  mcp.start({ port, token: mcpToken(), app: mcpApp, version: app.getVersion() })
+}
+
+ipcMain.handle('mcp:status', () => {
+  const { enabled, port } = settings().mcp
+  const url = mcp.urlFor(port)
+  return { ...mcp.status(), enabled, url, token: mcpToken(), name: mcp.SERVER_NAME }
+})
+ipcMain.handle('mcp:regenerateToken', () => {
+  store.delete('mcpToken')
+  startMcp()
 })
 
 // --- Extensiones -----------------------------------------------------------------
@@ -464,8 +592,12 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, w) => optimizer.watchWindowShortcuts(w))
   vault.setAutoLockMinutes(settings().vault.autoLockMinutes)
   extensions.initExtensions({ store, hostApi })
+  startMcp()
   createWindow()
 })
 
 app.on('window-all-closed', () => app.quit())
-app.on('will-quit', () => extensions.stopAll())
+app.on('will-quit', () => {
+  extensions.stopAll()
+  mcp.stop()
+})
