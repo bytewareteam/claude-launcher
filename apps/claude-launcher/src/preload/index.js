@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('api', {
   openWeb: invoke('open:web'),
   ide: {
     list: invoke('ide:list'),
+    setDefault: invoke('ide:setDefault'),
     open: invoke('ide:open')
   },
   openUrl: invoke('open:url'),

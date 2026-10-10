@@ -223,13 +223,12 @@ ipcMain.handle('open:shell', (_e, dir, title) => openShell(dir, title))
 ipcMain.handle('open:folder', (_e, dir) => shell.openPath(dir))
 // IDE: el elegido por el usuario o, si no hay, el primero que se encuentre.
 ipcMain.handle('ide:list', () => ({
-  ides: ide.detect().map(({ id, name }) => ({ id, name })),
+  ides: ide.detect().map(({ id, name, file }) => ({ id, name, path: file })),
   selected: store.get('ide') ?? null
 }))
-ipcMain.handle('ide:open', (_e, dir, id) => {
-  if (id) store.set('ide', id)
-  return ide.open(dir, id || store.get('ide'))
-})
+ipcMain.handle('ide:setDefault', (_e, id) => store.set('ide', id))
+// Con `id` abre ese IDE solo esta vez; el predeterminado se elige en Configuración.
+ipcMain.handle('ide:open', (_e, dir, id) => ide.open(dir, id || store.get('ide')))
 ipcMain.handle('open:web', async (_e, repoPath) => shell.openExternal(await remoteWebUrl(repoPath)))
 // Enlaces del contenido HTML de las extensiones: solo https y siempre en el navegador.
 ipcMain.handle('open:url', (_e, url) => {
