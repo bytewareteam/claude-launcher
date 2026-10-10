@@ -33,6 +33,7 @@ const dateFmt = new Intl.DateTimeFormat('es-ES', {
   month: 'short',
   timeZone: 'UTC'
 })
+const dateTimeFmt = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
 const formatDate = (iso) => dateFmt.format(new Date(iso))
 const DAY = 24 * 60 * 60_000
 const sprintDates = ({ attributes: a = {} }) =>
@@ -40,12 +41,17 @@ const sprintDates = ({ attributes: a = {} }) =>
     ? `${formatDate(a.startDate)} – ${formatDate(a.finishDate)}`
     : 'Sin fechas'
 
+// Los campos de texto de Azure DevOps son HTML: la app lo sanea y lo pinta (bloque `html`).
+// Vacío si solo lleva etiquetas o espacios (p. ej. `<div><br></div>`).
+const hasText = (html) => /\S/.test(String(html ?? '').replace(/<[^>]*>|&nbsp;/gi, ''))
+
 const refresh = { id: 'refresh', icon: 'refresh', title: 'Recargar' }
 const linkAction = { id: 'link', label: 'Vincular proyecto', icon: 'link' }
 
 exports.activate = (ctx) => {
   let cached // { token, expires } en memoria: `az` tarda ~1 s por llamada.
   const meta = new Map() // org/proyecto → { categories, states }: casi nunca cambian.
+  const openStory = new Map() // id de proyecto → id de la historia abierta en el kanban.
 
   async function token() {
     if (cached && cached.expires - Date.now() > 5 * 60_000) return cached.token
@@ -250,6 +256,31 @@ exports.activate = (ctx) => {
       assignedId: w.fields['System.AssignedTo']?.id,
       remaining: w.fields['Microsoft.VSTS.Scheduling.RemainingWork'] || 0
     }))
+  }
+
+  // Descripción y criterios de aceptación de una historia (HTML).
+  async function storyText(link, id) {
+    const fields = ['System.Description', 'Microsoft.VSTS.Common.AcceptanceCriteria']
+    const { fields: f = {} } = await api(
+      `${base(link)}/_apis/wit/workitems/${id}?fields=${fields.join(',')}&${API}`
+    )
+    return { description: f[fields[0]], criteria: f[fields[1]] }
+  }
+
+  // Comentarios de un elemento, del más reciente al más antiguo. La API sigue en preview.
+  async function comments(link, id) {
+    const { comments = [] } = await api(
+      `${base(link)}/_apis/wit/workItems/${id}/comments?$top=200&api-version=7.1-preview.4`
+    )
+    return comments
+      .filter((c) => !c.isDeleted)
+      .sort((a, b) => Date.parse(b.createdDate) - Date.parse(a.createdDate))
+      .map((c) => ({
+        id: c.id,
+        author: c.createdBy?.displayName ?? 'Desconocido',
+        date: dateTimeFmt.format(new Date(c.createdDate)),
+        html: c.text
+      }))
   }
 
   // Sprints del equipo, del más antiguo al más reciente.
@@ -565,39 +596,63 @@ exports.activate = (ctx) => {
     }
   }
 
-  // Una columna por estado de las historias, en el orden del flujo (sin «Removed»).
-  function kanban(md, link, stories) {
+  // Columnas por estado de los tipos de una categoría, en el orden del flujo (sin «Removed»).
+  function stateColumns(md, category, list, card) {
     const states = new Map()
-    for (const type of md.categories[STORY] ?? [])
+    for (const type of md.categories[category] ?? [])
       for (const s of md.states[type] ?? [])
         if (s.category !== 'Removed' && !states.has(s.name))
           states.set(s.name, TONES[s.category] ?? 'muted')
-    // Por si alguna historia está en un estado que no devuelve la API.
-    for (const it of stories) if (!states.has(it.state)) states.set(it.state, 'muted')
+    // Por si algún elemento está en un estado que no devuelve la API.
+    for (const it of list) if (!states.has(it.state)) states.set(it.state, 'muted')
+    return [...states].map(([state, tone]) => ({
+      id: state,
+      title: state,
+      tone,
+      items: list
+        .filter((it) => it.state === state)
+        .sort((a, b) => a.id - b.id)
+        .map(card)
+    }))
+  }
 
+  // Tablero de historias: solo la historia y el avance de sus tareas; al pulsarla se abre su
+  // pantalla con el tablero de tareas.
+  function kanban(md, link, stories) {
     return {
       type: 'kanban',
       filter: { label: 'Asignado a', all: 'Todas las personas' },
       empty: 'No hay historias de usuario en el sprint.',
-      columns: [...states].map(([state, tone]) => ({
-        id: state,
-        title: state,
-        tone,
-        items: stories
-          .filter((it) => it.state === state)
-          .sort((a, b) => a.id - b.id)
-          .map((it) => ({
-            id: String(it.id),
-            title: `#${it.id} ${it.title}`,
-            description: ownerOf(it),
-            meta: hoursLeft(md, it),
-            breakdown: taskProgress(md, link, it),
-            // Se filtra por el responsable de la historia y por los de sus tareas.
-            filterValues: [...new Set([ownerOf(it), ...it.tasks.map(ownerOf)])],
-            childrenLabel: `Tareas (${it.tasks.length})`,
-            children: taskItems(md, link, it),
-            actions: [openAction(link, it)]
-          }))
+      columns: stateColumns(md, STORY, stories, (it) => ({
+        id: String(it.id),
+        title: `#${it.id} ${it.title}`,
+        description: ownerOf(it),
+        meta: [
+          `${it.tasks.length} ${it.tasks.length === 1 ? 'tarea' : 'tareas'}`,
+          hoursLeft(md, it)
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        breakdown: taskProgress(md, link, it),
+        // Se filtra por el responsable de la historia y por los de sus tareas.
+        filterValues: [...new Set([ownerOf(it), ...it.tasks.map(ownerOf)])],
+        action: { id: 'story', args: { id: it.id } }
+      }))
+    }
+  }
+
+  function taskBoard(md, link, story) {
+    return {
+      type: 'kanban',
+      filter: { label: 'Asignado a', all: 'Todas las personas' },
+      empty: 'La historia no tiene tareas.',
+      columns: stateColumns(md, TASK, story.tasks, (t) => ({
+        id: String(t.id),
+        title: `#${t.id} ${t.title}`,
+        description: ownerOf(t),
+        meta: t.remaining ? `${t.remaining} h restantes` : undefined,
+        filterValues: [ownerOf(t)],
+        actions: [openAction(link, t)]
       }))
     }
   }
@@ -745,16 +800,84 @@ exports.activate = (ctx) => {
     const data = await load(project)
     if (!data) return unlinked
     const { link, team, md, sprint, stories, live } = data
+    if (!sprint) return { ...header(data), blocks: [noSprint(team)] }
+    const all = await withTasks(link, md, stories.filter(live))
+    // Si la historia abierta ya no está en el sprint (otro sprint, eliminada…), vuelve al tablero.
+    const story = all.find((it) => it.id === openStory.get(project.id))
+    if (story) return renderStory(data, story)
+    openStory.delete(project.id)
+    return { ...header(data), blocks: [kanban(md, link, all)] }
+  }
+
+  async function renderStory({ link, md, sprint }, story) {
+    const [{ description, criteria }, notes] = await Promise.all([
+      storyText(link, story.id),
+      comments(link, story.id)
+    ])
+    const section = (title, html, empty, open = true) => ({
+      type: 'section',
+      title,
+      open,
+      blocks: [
+        hasText(html) ? { type: 'html', html } : { type: 'text', tone: 'muted', text: empty }
+      ]
+    })
     return {
-      ...header(data),
-      blocks: sprint
-        ? [kanban(md, link, await withTasks(link, md, stories.filter(live)))]
-        : [noSprint(team)]
+      description: `${sprint.name} · ${story.type} · ${ownerOf(story)}`,
+      actions: [
+        { id: 'back', label: 'Volver al tablero', icon: 'arrow-left' },
+        { ...openAction(link, story), label: 'Abrir en Azure DevOps' },
+        refresh
+      ],
+      blocks: [
+        { type: 'heading', text: `#${story.id} ${story.title}` },
+        {
+          type: 'list',
+          items: [
+            {
+              id: String(story.id),
+              title: 'Estado',
+              badges: [{ label: story.state, tone: stateInfo(md, story).tone }],
+              meta: [`Actualizada el ${formatDate(story.changed)}`, hoursLeft(md, story)]
+                .filter(Boolean)
+                .join(' · '),
+              breakdown: taskProgress(md, link, story)
+            }
+          ]
+        },
+        section('Descripción', description, 'Sin descripción.'),
+        section('Criterios de aceptación', criteria, 'Sin criterios de aceptación.'),
+        {
+          type: 'section',
+          id: 'tasks',
+          title: `Tareas (${story.tasks.length})`,
+          blocks: [taskBoard(md, link, story)]
+        },
+        {
+          type: 'section',
+          id: 'comments',
+          title: `Comentarios (${notes.length})`,
+          blocks: [
+            {
+              type: 'list',
+              empty: 'Sin comentarios.',
+              items: notes.map((c) => ({
+                id: String(c.id),
+                title: c.author,
+                meta: c.date,
+                html: c.html
+              }))
+            }
+          ]
+        }
+      ]
     }
   }
 
   async function action(id, args, { project }) {
     if (id === 'open') return ctx.ui.openExternal(args.url)
+    if (id === 'story') return void openStory.set(project.id, args.id)
+    if (id === 'back') return void openStory.delete(project.id)
     if (id === 'link') return chooseLink(project)
     if (id === 'team') return chooseTeam(project)
     if (id === 'sprint') return chooseSprint(project)
