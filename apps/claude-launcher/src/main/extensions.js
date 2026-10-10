@@ -65,13 +65,18 @@ function readManifest(dir, source) {
     dir,
     source,
     permissions: normalizePermissions(cl.permissions),
-    views: (cl.views || []).map((v) => ({
-      id: String(v.id),
-      title: String(v.title || v.id),
-      icon: v.icon
-    }))
+    views: viewsOf(cl.views),
+    projectTabs: viewsOf(cl.projectTabs)
   }
 }
+
+// Vistas de la barra lateral (`views`) y pestañas de la pantalla de proyecto (`projectTabs`).
+const viewsOf = (list) =>
+  (Array.isArray(list) ? list : []).map((v) => ({
+    id: String(v.id),
+    title: String(v.title || v.id),
+    icon: v.icon
+  }))
 
 // Descubre las extensiones instaladas (y las del repo en desarrollo). Para recoger cambios,
 // detiene los procesos en marcha: se vuelven a arrancar en la siguiente petición.
@@ -92,6 +97,7 @@ export function scan() {
       } catch (err) {
         const id = `${source}:${d.name}`
         ext = { id, displayName: d.name, dir, source, invalid: err.message, views: [], log: [] }
+        ext.projectTabs = []
         ext.permissions = normalizePermissions()
       }
       if (extensions.has(ext.id))
@@ -136,6 +142,7 @@ export function list() {
     invalid: ext.invalid || null,
     permissions: ext.permissions,
     views: ext.views,
+    projectTabs: ext.projectTabs,
     enabled: isEnabled(ext),
     granted: isGranted(ext),
     running: !!ext.proc,
@@ -351,9 +358,10 @@ async function callEnabled(id, method, ...params) {
   return call(ext, method, ...params)
 }
 
-export const render = (id, viewId) => callEnabled(id, 'render', viewId)
-export const action = (id, viewId, actionId, args) =>
-  callEnabled(id, 'action', viewId, actionId, args)
+// context: { project } cuando la vista es una pestaña de proyecto (ver index.js).
+export const render = (id, viewId, context) => callEnabled(id, 'render', viewId, context)
+export const action = (id, viewId, actionId, args, context) =>
+  callEnabled(id, 'action', viewId, actionId, args, context)
 
 export function stopAll() {
   for (const ext of extensions.values()) stop(ext)

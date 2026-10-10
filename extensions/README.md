@@ -51,7 +51,8 @@ catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a ex
       "projects": true,
       "dialogs": true
     },
-    "views": [{ "id": "principal", "title": "Mi vista", "icon": "puzzle" }]
+    "views": [{ "id": "principal", "title": "Mi vista", "icon": "puzzle" }],
+    "projectTabs": [{ "id": "board", "title": "Board", "icon": "kanban" }]
   }
 }
 ```
@@ -62,7 +63,12 @@ catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a ex
 | `projects` | `ctx.projects.list()` y `ctx.projects.addRepo()` |
 | `dialogs` | `ctx.ui.pickFolder()` |
 
-Cada vista aparece en la barra lateral. Iconos disponibles: ver `src/renderer/src/lib/extIcons.js`.
+Cada vista de `views` aparece en la barra lateral; cada una de `projectTabs`, como pestaña en la
+pantalla de cada proyecto. Ambas se registran igual con `ctx.views.register`. Una pestaña de
+proyecto recibe en `render(context)` y `action(id, args, context)` el proyecto que se está viendo:
+`context.project = { id, name, repos: [{ id, name, path }] }` (no hace falta el permiso `projects`).
+
+Iconos disponibles: ver `apps/claude-launcher/src/renderer/src/lib/extIcons.js`.
 
 ## Código (`index.js`)
 
@@ -106,6 +112,20 @@ exports.deactivate = () => {}
 
 Una acción sin `label` se muestra como botón de icono (usa `title` como tooltip).
 
+### Bloques
+
+| Bloque | Campos |
+| --- | --- |
+| `text` | `text`, `tone?` |
+| `heading` | `text` |
+| `list` | `items`, `searchable?`, `empty?`. Cada `badge` es texto o `{ label, tone }`; `children` (mismos campos), `childrenLabel` y `childrenOpen` (por defecto `true`) añaden una sublista plegable |
+| `stats` | `items: [{ label, value, hint?, tone?, progress? }]` (`progress` de 0 a 1) |
+| `breakdown` | `title`, `items: [{ label, value, tone? }]`, `empty?`: barra apilada con leyenda |
+| `columns` | `blocks`: otros bloques en columnas |
+| `tabs` | `tabs: [{ id, label, blocks }]`: pestañas, cada una con sus bloques |
+
+Tonos: `muted`, `info`, `success`, `warning`, `error`.
+
 ## API de `ctx`
 
 | Método | Devuelve |
@@ -125,4 +145,5 @@ con `" % ! ^ & | < >` o saltos de línea, que cmd.exe interpretaría.
 
 `console.log` y los errores van al **Registro** de la extensión (pantalla *Extensiones*).
 
-Ejemplos completos: [`github/`](github/index.js) y [`azure-devops/`](azure-devops/index.js).
+Ejemplos completos: [`github/`](github/index.js), [`azure-devops/`](azure-devops/index.js) y
+[`azure-boards/`](azure-boards/index.js) (pestaña de proyecto).

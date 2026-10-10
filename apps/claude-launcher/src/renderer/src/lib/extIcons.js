@@ -1,4 +1,6 @@
 import {
+  Bug,
+  Calendar,
   Cloud,
   Download,
   ExternalLink,
@@ -6,32 +8,42 @@ import {
   GitBranch,
   Globe,
   Layers,
+  Link,
+  ListTodo,
   Lock,
   Plus,
   Puzzle,
   RefreshCw,
+  SquareKanban,
   Star,
   Trash2,
-  User
+  User,
+  Users
 } from 'lucide-react'
 
 // Iconos que pueden usar las extensiones por nombre. Lista cerrada: así no se empaqueta
 // todo lucide. Si una extensión necesita otro, añádelo aquí y documéntalo.
 const ICONS = {
+  bug: Bug,
+  calendar: Calendar,
   cloud: Cloud,
   download: Download,
   'external-link': ExternalLink,
   folder: Folder,
   'git-branch': GitBranch,
   globe: Globe,
+  kanban: SquareKanban,
   layers: Layers,
+  link: Link,
+  'list-todo': ListTodo,
   lock: Lock,
   plus: Plus,
   puzzle: Puzzle,
   refresh: RefreshCw,
   star: Star,
   trash: Trash2,
-  user: User
+  user: User,
+  users: Users
 }
 
 export const extIcon = (name) => ICONS[name] ?? Puzzle
