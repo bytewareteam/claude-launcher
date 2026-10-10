@@ -8,6 +8,7 @@ import dotenv from 'dotenv'
 import * as vault from './vault'
 import { repoRoot, listWorktrees, remoteBranches, worktreeStatus, removeWorktree, repoSummary } from './git'
 import { openClaude } from './terminal'
+import * as extensions from './extensions'
 import icon from '../../resources/icon.png?asset'
 
 // Misma carpeta de datos en desarrollo y en la app instalada
@@ -97,7 +98,7 @@ ipcMain.handle('repo:pick', async (e) => {
   return repoRoot(res.filePaths[0])
 })
 
-ipcMain.handle('repo:add', (_e, projectId, repoPath) =>
+const addRepo = (projectId, repoPath) =>
   updateProjects((list) => {
     const p = findProject(list, projectId)
     if (!p.repos.some((r) => r.path.toLowerCase() === repoPath.toLowerCase())) {
@@ -109,7 +110,8 @@ ipcMain.handle('repo:add', (_e, projectId, repoPath) =>
       })
     }
   })
-)
+
+ipcMain.handle('repo:add', (_e, projectId, repoPath) => addRepo(projectId, repoPath))
 
 ipcMain.handle('repo:remove', (_e, projectId, repoId) =>
   updateProjects((list) => {
@@ -204,14 +206,73 @@ ipcMain.handle('vault:importEnv', async (e, scope) => {
   return vars.length
 })
 
+// --- Extensiones -----------------------------------------------------------------
+
+const broadcast = (channel, ...args) => {
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send(channel, ...args)
+}
+
+// Selecciones que una extensión ha pedido al usuario y esperan respuesta del renderer.
+const prompts = new Map()
+
+// Lo que una extensión puede pedir a la app. Los permisos se comprueban en extensions.js;
+// nada de aquí da acceso a la bóveda.
+const hostApi = {
+  'projects.list': () => projects().map(({ id, name, repos }) => ({ id, name, repos })),
+  'projects.addRepo': async (_ext, projectId, path) => addRepo(projectId, await repoRoot(path)),
+  'views.refresh': (ext, viewId) => broadcast('ext:changed', ext.id, viewId),
+  'ui.toast': (ext, message, kind) =>
+    broadcast('ext:toast', { from: ext.displayName, message: String(message), kind }),
+  'ui.quickPick': (ext, items, options) =>
+    new Promise((resolve) => {
+      const id = randomUUID()
+      prompts.set(id, resolve)
+      const placeholder = options?.placeholder
+      broadcast('ext:quickPick', { id, from: ext.displayName, items, placeholder })
+    }),
+  'ui.pickFolder': async (_ext, options) => {
+    const res = await dialog.showOpenDialog(BrowserWindow.getAllWindows()[0], {
+      title: options?.title || 'Selecciona una carpeta',
+      defaultPath: options?.defaultPath || undefined,
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return res.canceled ? null : res.filePaths[0] || null
+  },
+  'ui.openExternal': (_ext, url) => {
+    if (!/^https:\/\//i.test(url)) throw new Error('Solo se pueden abrir enlaces https.')
+    return shell.openExternal(url)
+  },
+  'storage.get': (ext, key) => store.get('extensionData', {})[ext.id]?.[key] ?? null,
+  'storage.set': (ext, key, value) => {
+    const all = store.get('extensionData', {})
+    store.set('extensionData', { ...all, [ext.id]: { ...all[ext.id], [key]: value } })
+  }
+}
+
+ipcMain.handle('ext:list', () => extensions.list())
+ipcMain.handle('ext:setEnabled', (_e, id, enabled) => extensions.setEnabled(id, enabled))
+ipcMain.handle('ext:reload', () => extensions.scan())
+ipcMain.handle('ext:log', (_e, id) => extensions.logOf(id))
+ipcMain.handle('ext:openFolder', () => shell.openPath(extensions.userDir()))
+ipcMain.handle('ext:render', (_e, id, viewId) => extensions.render(id, viewId))
+ipcMain.handle('ext:action', (_e, id, viewId, actionId, args) =>
+  extensions.action(id, viewId, actionId, args)
+)
+ipcMain.handle('ext:reply', (_e, id, value) => {
+  prompts.get(id)?.(value ?? null)
+  prompts.delete(id)
+})
+
 vault.setOnLock(() => {
-  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('vault:locked')
+  broadcast('vault:locked')
 })
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('dev.claude-launcher.app')
   app.on('browser-window-created', (_, w) => optimizer.watchWindowShortcuts(w))
+  extensions.initExtensions({ store, hostApi })
   createWindow()
 })
 
 app.on('window-all-closed', () => app.quit())
+app.on('will-quit', () => extensions.stopAll())

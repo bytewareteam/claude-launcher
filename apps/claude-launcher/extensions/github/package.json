@@ -1,0 +1,17 @@
+{
+  "name": "github",
+  "displayName": "GitHub",
+  "version": "0.1.0",
+  "description": "Lista tus repositorios de GitHub (vía GitHub CLI) y clónalos donde quieras.",
+  "main": "index.js",
+  "private": true,
+  "claudeLauncher": {
+    "apiVersion": 1,
+    "permissions": {
+      "exec": ["gh"],
+      "projects": true,
+      "dialogs": true
+    },
+    "views": [{ "id": "repos", "title": "GitHub", "icon": "cloud" }]
+  }
+}

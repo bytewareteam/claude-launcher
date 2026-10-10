@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { House, Lock, LockOpen, Plus, Search, ShieldPlus } from 'lucide-react'
+import { House, Lock, LockOpen, Plus, Puzzle, Search, ShieldPlus } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
 import { searchShortcut } from '@/components/CommandPalette'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import {
 import { useAskVault } from '@/components/VaultProvider'
 import { api } from '@/lib/api'
 import { useAction, useVaultStatus } from '@/lib/queries'
+import { extIcon } from '@/lib/extIcons'
 import { cn } from '@/lib/utils'
 import logo from '@claude-launcher/design-tokens/logo.svg'
 
@@ -25,7 +26,7 @@ const navItem = (active) =>
     active && 'bg-sidebar-accent shadow-[inset_3px_0_0_var(--primary)]'
   )
 
-export function Sidebar({ projects, selectedId, onSelect, onSearch, newProjectOpen, onNewProjectOpenChange }) {
+export function Sidebar({ projects, extViews, selectedId, onSelect, onSearch, newProjectOpen, onNewProjectOpenChange }) {
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
   // Coincide por nombre del proyecto o de cualquiera de sus repos.
@@ -62,6 +63,27 @@ export function Sidebar({ projects, selectedId, onSelect, onSearch, newProjectOp
             </li>
           ))}
           {q && !visible.length && <li className="px-3 py-2 text-sm text-muted-foreground">Sin resultados.</li>}
+        </ul>
+        <ul className="mt-1 space-y-0.5 border-t pt-1">
+          {extViews.map(({ key, view }) => {
+            const Icon = extIcon(view.icon)
+            return (
+              <li key={key}>
+                <button onClick={() => onSelect(key)} className={navItem(key === selectedId)}>
+                  <span className="flex items-center gap-2 truncate">
+                    <Icon className="size-4" /> {view.title}
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+          <li>
+            <button onClick={() => onSelect('extensions')} className={navItem(selectedId === 'extensions')}>
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <Puzzle className="size-4" /> Extensiones
+              </span>
+            </button>
+          </li>
         </ul>
       </nav>
       <footer className="border-t p-3">

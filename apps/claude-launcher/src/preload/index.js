@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+const on = (channel) => (fn) => {
+  const listener = (_e, ...args) => fn(...args)
+  ipcRenderer.on(channel, listener)
+  return () => ipcRenderer.removeListener(channel, listener)
+}
+
 const invoke =
   (channel) =>
   (...args) =>
@@ -33,10 +39,19 @@ contextBridge.exposeInMainWorld('api', {
     remove: invoke('vault:delete'),
     copy: invoke('vault:copy'),
     importEnv: invoke('vault:importEnv'),
-    onLocked: (fn) => {
-      const listener = () => fn()
-      ipcRenderer.on('vault:locked', listener)
-      return () => ipcRenderer.removeListener('vault:locked', listener)
-    }
+    onLocked: on('vault:locked')
+  },
+  extensions: {
+    list: invoke('ext:list'),
+    setEnabled: invoke('ext:setEnabled'),
+    reload: invoke('ext:reload'),
+    log: invoke('ext:log'),
+    openFolder: invoke('ext:openFolder'),
+    render: invoke('ext:render'),
+    action: invoke('ext:action'),
+    reply: invoke('ext:reply'),
+    onChanged: on('ext:changed'),
+    onToast: on('ext:toast'),
+    onQuickPick: on('ext:quickPick')
   }
 })

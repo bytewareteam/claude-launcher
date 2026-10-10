@@ -22,8 +22,8 @@ const SYSTEM_VARS = new RegExp(
   'i'
 )
 
-// Entorno base para la terminal: solo lo imprescindible del sistema.
-function baseEnv() {
+// Entorno base (terminal y extensiones): solo lo imprescindible del sistema.
+export function baseEnv() {
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => SYSTEM_VARS.test(k)))
 }
 

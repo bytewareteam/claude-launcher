@@ -37,3 +37,13 @@ export const useWorktreeStatus = (wtPath, base, enabled) =>
   })
 
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
+
+export const useExtensions = () =>
+  useQuery({ queryKey: ['extensions'], queryFn: api.extensions.list })
+
+// Vista declarativa de una extensión: la pinta ExtensionView con los componentes de la app.
+export const useExtensionView = (extId, viewId) =>
+  useQuery({
+    queryKey: ['ext-view', extId, viewId],
+    queryFn: () => api.extensions.render(extId, viewId)
+  })

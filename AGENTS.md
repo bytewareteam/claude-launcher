@@ -72,10 +72,13 @@ src/
     git.js       Wrappers de `git` (worktrees, ramas remotas, estado).
     vault.js     Bóveda KeePass (kdbxweb + Argon2 vía hash-wasm). Autobloqueo a los 15 min.
     terminal.js  Lanza `wt.exe … claude` con un entorno filtrado.
+    extensions.js       Descubre extensiones, guarda su consentimiento y las arranca.
+    extension-host.js   Corre dentro del utilityProcess de cada extensión (entrada aparte de Vite).
   preload/     Expone `window.api` (contextBridge) → un `ipcRenderer.invoke` por canal.
   renderer/    React 19 + Tailwind v4 + shadcn/ui (estilo new-york, JSX).
     src/lib/queries.js   Hooks de TanStack Query sobre `window.api`.
     src/components/ui/   Componentes shadcn generados: no editarlos a mano salvo necesidad.
+extensions/    Extensiones incluidas (p. ej. `github/`). Guía para escribirlas: `extensions/README.md`.
 ```
 
 Flujo de datos: componente → hook de `queries.js` → `window.api.*` → `ipcMain.handle(...)` en `main/index.js`.
@@ -86,6 +89,14 @@ Para añadir una operación nueva:
 3. Hook o `useAction(api.x)` en el renderer.
 
 Las mutaciones invalidan **todas** las queries al terminar y muestran los errores como toast (`src/renderer/src/main.jsx`); no hace falta gestionarlo en cada componente.
+
+## Extensiones
+
+Cada extensión corre en su propio `utilityProcess` y su UI es JSON que pinta `ExtensionView.jsx`.
+Lo que pueden pedir a la app está en `hostApi` (`src/main/index.js`) y sus permisos en
+`METHOD_PERMISSION` (`src/main/extensions.js`). Para ampliar la API: añade el método a `hostApi`,
+su permiso si toca, la función en `ctx` (`extension-host.js`) y documéntalo en `extensions/README.md`.
+Nunca expongas la bóveda a las extensiones.
 
 ## Convenciones
 
@@ -102,6 +113,7 @@ Las mutaciones invalidan **todas** las queries al terminar y muestran los errore
 - Los secretos se pasan por **entorno**, nunca por argumentos de línea de comandos.
 - El portapapeles se limpia a los 30 s tras copiar un secreto.
 - No añadas `nodeIntegration` ni desactives `contextIsolation`.
+- Las extensiones no reciben secretos ni código propio en el renderer (UI declarativa).
 
 ## Datos del usuario
 

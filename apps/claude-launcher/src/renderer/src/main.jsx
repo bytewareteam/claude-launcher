@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider, MutationCache, focusManager } from '@
 import { toast } from 'sonner'
 import { Toaster } from '@/components/ui/sonner'
 import { VaultProvider } from '@/components/VaultProvider'
+import { ExtensionBridge } from '@/components/ExtensionBridge'
 import { errMsg } from '@/lib/api'
 import App from './App'
 
@@ -35,6 +36,7 @@ createRoot(document.getElementById('root')).render(
     <QueryClientProvider client={queryClient}>
       <VaultProvider>
         <App />
+        <ExtensionBridge />
       </VaultProvider>
       <Toaster theme="dark" position="bottom-right" />
     </QueryClientProvider>
