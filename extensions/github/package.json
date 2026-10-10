@@ -18,6 +18,7 @@
       "projects": true,
       "dialogs": true
     },
-    "views": [{ "id": "repos", "title": "GitHub", "icon": "cloud" }]
+    "views": [{ "id": "repos", "title": "GitHub", "icon": "cloud" }],
+    "repoSources": [{ "id": "repos", "title": "GitHub", "icon": "cloud" }]
   }
 }
