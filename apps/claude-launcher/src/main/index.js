@@ -15,7 +15,8 @@ import {
   repoSummary,
   remoteWebUrl
 } from './git'
-import { openClaude } from './terminal'
+import { openClaude, CLAUDE_ARGS } from './terminal'
+import { claudeOptions } from './claude-cli'
 import * as extensions from './extensions'
 import icon from '../../resources/icon.png?asset'
 
@@ -28,7 +29,53 @@ const store = new Store({ name: 'data', defaults: { projects: [], launches: [] }
 
 const DEFAULT_BASE_BRANCH = 'origin/develop'
 
-const vaultPath = () => store.get('vaultPath') || join(app.getPath('userData'), 'secrets.kdbx')
+// Configuración editable desde la pantalla «Configuración».
+const DEFAULT_SETTINGS = {
+  claude: { args: '', newWindow: false },
+  vault: { autoLockMinutes: 15, clipboardSeconds: 30 }
+}
+
+function settings() {
+  const saved = store.get('settings', {})
+  return {
+    claude: { ...DEFAULT_SETTINGS.claude, ...saved.claude },
+    vault: { ...DEFAULT_SETTINGS.vault, ...saved.vault }
+  }
+}
+
+const clampInt = (value, min, max, name) => {
+  const n = Number(value)
+  if (!Number.isInteger(n) || n < min || n > max)
+    throw new Error(`${name} debe ser un número entero entre ${min} y ${max}.`)
+  return n
+}
+
+// Valida solo los campos recibidos y guarda el resultado completo.
+function updateSettings(patch = {}) {
+  const next = settings()
+  if (patch.claude) {
+    const { args, newWindow } = patch.claude
+    if (args !== undefined) {
+      if (typeof args !== 'string' || !CLAUDE_ARGS.test(args))
+        throw new Error('Los argumentos solo admiten letras, números, espacios y - = . : / , @')
+      next.claude.args = args.trim()
+    }
+    if (newWindow !== undefined) next.claude.newWindow = !!newWindow
+  }
+  if (patch.vault) {
+    const { autoLockMinutes, clipboardSeconds } = patch.vault
+    if (autoLockMinutes !== undefined)
+      next.vault.autoLockMinutes = clampInt(autoLockMinutes, 1, 240, 'El autobloqueo')
+    if (clipboardSeconds !== undefined)
+      next.vault.clipboardSeconds = clampInt(clipboardSeconds, 5, 300, 'La limpieza del portapapeles')
+  }
+  store.set('settings', next)
+  vault.setAutoLockMinutes(next.vault.autoLockMinutes)
+  return next
+}
+
+const defaultVaultPath = () => join(app.getPath('userData'), 'secrets.kdbx')
+const vaultPath = () => store.get('vaultPath') || defaultVaultPath()
 
 const projects = () => store.get('projects')
 
@@ -154,7 +201,7 @@ ipcMain.handle('open:claude', (_e, dir, title, scope) => {
     const project = resolveScope({ projectId: scope.projectId })
     env = vault.envFor(project, scope.repoId ? resolveScope(scope) : null)
   }
-  openClaude(dir, title, env)
+  openClaude(dir, title, env, settings().claude)
   // Historial de sesiones para la pantalla de inicio (últimas 500).
   const launch = { at: new Date().toISOString(), dir, title, ...scope }
   store.set('launches', [launch, ...store.get('launches')].slice(0, 500))
@@ -178,6 +225,12 @@ ipcMain.handle('open:url', (_e, url) => {
   if (!/^https:\/\//i.test(url)) throw new Error('Solo se pueden abrir enlaces https.')
   return shell.openExternal(url)
 })
+
+// --- Configuración --------------------------------------------------------------
+
+ipcMain.handle('settings:get', () => ({ ...settings(), defaultVaultPath: defaultVaultPath() }))
+ipcMain.handle('settings:set', (_e, patch) => updateSettings(patch))
+ipcMain.handle('claude:options', () => claudeOptions())
 
 // --- Tutorial -------------------------------------------------------------------
 
@@ -204,6 +257,12 @@ ipcMain.handle('vault:useExisting', async (e) => {
   return true
 })
 
+ipcMain.handle('vault:resetPath', () => {
+  vault.lock()
+  store.delete('vaultPath')
+})
+ipcMain.handle('vault:showFile', () => shell.showItemInFolder(vaultPath()))
+
 ipcMain.handle('vault:list', (_e, scope) => vault.listVars(resolveScope(scope)))
 ipcMain.handle('vault:get', (_e, scope, id) => vault.getValue(resolveScope(scope), id))
 ipcMain.handle('vault:set', (_e, scope, key, value) =>
@@ -214,10 +273,10 @@ ipcMain.handle('vault:delete', (_e, scope, id) => vault.deleteVar(resolveScope(s
 ipcMain.handle('vault:copy', (_e, scope, id) => {
   const value = vault.getValue(resolveScope(scope), id)
   clipboard.writeText(value)
-  // Limpia el portapapeles a los 30 s si sigue conteniendo el secreto.
+  // Limpia el portapapeles pasado el plazo configurado si sigue conteniendo el secreto.
   setTimeout(() => {
     if (clipboard.readText() === value) clipboard.clear()
-  }, 30_000)
+  }, settings().vault.clipboardSeconds * 1000)
 })
 
 ipcMain.handle('vault:importEnv', async (e, scope) => {
@@ -322,6 +381,7 @@ vault.setOnLock(() => {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('dev.claude-launcher.app')
   app.on('browser-window-created', (_, w) => optimizer.watchWindowShortcuts(w))
+  vault.setAutoLockMinutes(settings().vault.autoLockMinutes)
   extensions.initExtensions({ store, hostApi })
   createWindow()
 })
