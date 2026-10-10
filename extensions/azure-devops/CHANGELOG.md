@@ -1,3 +1,7 @@
+## 1.1.0 (2026-10-10)
+
+This was a version bump only for ext-azure-devops to align it with other projects, there were no code changes.
+
 # 1.0.0 (2026-10-10)
 
 ### 🚀 Features

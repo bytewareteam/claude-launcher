@@ -1,3 +1,16 @@
+## 1.3.0 (2026-10-10)
+
+### 🚀 Features
+
+- tarjetas de kanban pulsables, secciones plegables y bloque html saneado en extensiones ([38a98a6](https://github.com/bytewareteam/claude-launcher/commit/38a98a6))
+- **azure-boards:** detalle en modal al pulsar cifras y estados del sprint ([e6e9b29](https://github.com/bytewareteam/claude-launcher/commit/e6e9b29))
+- **azure-boards:** dashboard del sprint y vista kanban filtrable por persona ([4ebd9c5](https://github.com/bytewareteam/claude-launcher/commit/4ebd9c5))
+- pestañas de proyecto para extensiones y extensión Azure Boards ([51a044b](https://github.com/bytewareteam/claude-launcher/commit/51a044b))
+
+### ❤️ Thank You
+
+- Willian Monoga @bytewareteam
+
 ## 1.2.0 (2026-10-10)
 
 ### 🚀 Features
