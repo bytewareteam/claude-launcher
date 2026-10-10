@@ -1,5 +1,7 @@
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
+import { join } from 'path'
+import { whichWin } from './which'
 
 // Únicas variables del sistema que hereda la terminal: las que Windows, git,
 // node y la propia shell necesitan para funcionar, más la configuración de red.
@@ -50,6 +52,25 @@ export function openClaude(dir, title, extraEnv = {}, { args = '', newWindow = f
       stdio: 'ignore',
       windowsVerbatimArguments: true
     }).unref()
+  })
+  child.unref()
+}
+
+// Terminal normal (PowerShell 7) en `dir`: entorno completo del usuario y ningún secreto.
+export function openShell(dir, title) {
+  if (!existsSync(dir)) throw new Error(`No existe el directorio: ${dir}`)
+  const pwsh = whichWin('pwsh.exe', [join(process.env.PROGRAMFILES || '', 'PowerShell', '7')])
+  if (!pwsh)
+    throw new Error(
+      'No se encuentra PowerShell 7 (pwsh). Instálalo con `winget install Microsoft.PowerShell`.'
+    )
+  const child = spawn('wt.exe', ['-w', '0', 'nt', '-d', dir, '--title', title, pwsh], {
+    detached: true,
+    stdio: 'ignore'
+  })
+  child.on('error', () => {
+    // Fallback sin Windows Terminal: consola propia de pwsh.
+    spawn(pwsh, ['-NoExit'], { cwd: dir, detached: true, stdio: 'ignore' }).unref()
   })
   child.unref()
 }

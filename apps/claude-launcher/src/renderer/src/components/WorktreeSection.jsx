@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { BranchCombobox } from '@/components/BranchCombobox'
 import { IdeButton } from '@/components/IdeButton'
+import { ShellButton } from '@/components/ShellButton'
 import { api, errMsg } from '@/lib/api'
 import { useAction, useWorktrees, useWorktreeStatus } from '@/lib/queries'
 import { plural } from '@/lib/format'
@@ -99,6 +100,7 @@ function WorktreeRow({ repo, wt, base, onLaunch }) {
           <Button size="sm" variant="outline" className="mr-1 h-7" onClick={onLaunch}>
             <Terminal /> Claude
           </Button>
+          <ShellButton dir={wt.path} title={`${repo.name}:${label}`} />
           <IdeButton dir={wt.path} />
           <Button
             size="icon-sm"

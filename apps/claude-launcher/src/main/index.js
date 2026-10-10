@@ -15,7 +15,7 @@ import {
   repoSummary,
   remoteWebUrl
 } from './git'
-import { openClaude, CLAUDE_ARGS } from './terminal'
+import { openClaude, openShell, CLAUDE_ARGS } from './terminal'
 import { claudeOptions } from './claude-cli'
 import * as ide from './ide'
 import * as extensions from './extensions'
@@ -219,6 +219,7 @@ ipcMain.handle('dashboard', async () => {
   }
 })
 
+ipcMain.handle('open:shell', (_e, dir, title) => openShell(dir, title))
 ipcMain.handle('open:folder', (_e, dir) => shell.openPath(dir))
 // IDE: el elegido por el usuario o, si no hay, el primero que se encuentre.
 ipcMain.handle('ide:list', () => ({

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { EnvSection } from '@/components/EnvSection'
 import { IdeButton, IdeSubmenu } from '@/components/IdeButton'
+import { ShellButton } from '@/components/ShellButton'
 import { WorktreeSection } from '@/components/WorktreeSection'
 import { api } from '@/lib/api'
 import { useAction, useWorktrees } from '@/lib/queries'
@@ -50,6 +51,7 @@ export function RepoCard({ project, repo }) {
             <Button size="sm" className="mr-1" onClick={() => launch(repo.path, repo.name, scope)}>
               <Terminal /> Claude
             </Button>
+            <ShellButton dir={repo.path} title={repo.name} />
             <IdeButton dir={repo.path} />
             <Button
               size="icon-sm"
