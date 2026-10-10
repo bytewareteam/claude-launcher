@@ -118,14 +118,16 @@ Una acción sin `label` se muestra como botón de icono (usa `title` como toolti
 | --- | --- |
 | `text` | `text`, `tone?` |
 | `heading` | `text` |
-| `list` | `items`, `searchable?`, `empty?`. Cada `badge` es texto o `{ label, tone }`; `children` (mismos campos), `childrenLabel` y `childrenOpen` (por defecto `true`) añaden una sublista plegable |
-| `stats` | `items: [{ label, value, hint?, tone?, progress? }]` (`progress` de 0 a 1) |
-| `breakdown` | `title`, `items: [{ label, value, tone? }]`, `empty?`: barra apilada con leyenda |
+| `list` | `items`, `searchable?`, `empty?`. Cada `badge` es texto o `{ label, tone }`; `children` (mismos campos), `childrenLabel` y `childrenOpen` (por defecto `true`) añaden una sublista plegable; `breakdown: [{ label, value, tone?, detail? }]` pinta una barra apilada pequeña con leyenda |
+| `stats` | `items: [{ label, value, hint?, tone?, progress?, detail? }]` (`progress` de 0 a 1) |
+| `breakdown` | `title`, `items: [{ label, value, tone?, detail? }]`, `empty?`: barra apilada con leyenda |
 | `columns` | `blocks`: otros bloques en columnas |
 | `tabs` | `tabs: [{ id, label, blocks }]`: pestañas, cada una con sus bloques |
 | `kanban` | `columns: [{ id, title, tone?, items }]`, `filter?: { label, all? }`, `empty?`. Los `items` son como los de `list` (con `children`); con `filter`, cada tarjeta indica en `filterValues: [...]` los valores por los que se puede filtrar y los `children` que no coinciden se atenúan |
 
 Tonos: `muted`, `info`, `success`, `warning`, `error`.
+
+Con `detail: { title, description?, blocks }`, una cifra de `stats` o un segmento de `breakdown` se puede pulsar y abre un modal con esos bloques.
 
 ## API de `ctx`
 

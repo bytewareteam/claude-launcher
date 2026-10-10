@@ -3,6 +3,13 @@ import { Check, ChevronRight, ChevronsUpDown, LoaderCircle, User } from 'lucide-
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Command,
@@ -52,7 +59,8 @@ export function ExtensionView({ extension, view, projectId = null }) {
     view.id,
     projectId
   )
-  const ctx = { extId: extension.id, viewId: view.id, projectId }
+  const [detail, setDetail] = useState(null)
+  const ctx = { extId: extension.id, viewId: view.id, projectId, openDetail: setDetail }
   const spinner = isFetching && !isPending && (
     <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
   )
@@ -99,6 +107,17 @@ export function ExtensionView({ extension, view, projectId = null }) {
         </div>
       )}
       <Blocks blocks={data?.blocks} ctx={ctx} />
+
+      <Dialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}>
+        <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{detail?.title}</DialogTitle>
+            {/* Radix avisa en consola si falta la descripción: siempre presente, aunque vacía. */}
+            <DialogDescription>{detail?.description}</DialogDescription>
+          </DialogHeader>
+          <Blocks blocks={detail?.blocks} ctx={ctx} className="-mx-1 overflow-y-auto px-1" />
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }
@@ -118,8 +137,8 @@ function Block({ block, ctx }) {
     return <p className={cn('whitespace-pre-line', TONE_TEXT[block.tone])}>{block.text}</p>
   if (block.type === 'heading') return <h2 className="-mb-2 text-lg font-semibold">{block.text}</h2>
   if (block.type === 'list') return <ListBlock block={block} ctx={ctx} />
-  if (block.type === 'stats') return <StatsBlock block={block} />
-  if (block.type === 'breakdown') return <BreakdownBlock block={block} />
+  if (block.type === 'stats') return <StatsBlock block={block} ctx={ctx} />
+  if (block.type === 'breakdown') return <BreakdownBlock block={block} ctx={ctx} />
   if (block.type === 'tabs') return <TabsBlock block={block} ctx={ctx} />
   if (block.type === 'kanban') return <KanbanBlock block={block} ctx={ctx} />
   if (block.type === 'columns')
@@ -157,12 +176,47 @@ function TabsBlock({ block, ctx }) {
 
 const ratio = (v) => `${Math.round(Math.min(1, Math.max(0, Number(v) || 0)) * 100)}%`
 
-// Tarjetas de cifras: { label, value, hint?, tone?, progress? (0–1) }.
-function StatsBlock({ block }) {
+// Botón que abre el detalle (`{ title, description?, blocks }`) en un modal; sin detalle, un div.
+function Detail({ detail, ctx, className, children, ...props }) {
+  if (!detail)
+    return (
+      <div className={className} {...props}>
+        {children}
+      </div>
+    )
+  return (
+    <button
+      type="button"
+      {...props}
+      className={cn(
+        'cursor-pointer text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+        className
+      )}
+      onClick={(e) => {
+        // Dentro de una tarjeta no debe activar otros clics.
+        e.stopPropagation()
+        ctx.openDetail(detail)
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+// Tarjetas de cifras: { label, value, hint?, tone?, progress? (0–1), detail? }.
+function StatsBlock({ block, ctx }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
       {block.items?.map((it, i) => (
-        <div key={i} className="flex flex-col gap-1 rounded-xl border bg-card px-4 py-3">
+        <Detail
+          key={i}
+          detail={it.detail}
+          ctx={ctx}
+          className={cn(
+            'flex flex-col gap-1 rounded-xl border bg-card px-4 py-3',
+            it.detail && 'hover:border-primary/50 hover:bg-accent/40'
+          )}
+        >
           <span className="text-xs text-muted-foreground">{it.label}</span>
           <span className={cn('truncate text-2xl font-semibold', TONE_TEXT[it.tone])}>
             {it.value}
@@ -176,14 +230,14 @@ function StatsBlock({ block }) {
             </div>
           )}
           {it.hint && <span className="text-xs text-muted-foreground">{it.hint}</span>}
-        </div>
+        </Detail>
       ))}
     </div>
   )
 }
 
 // Reparto de un total en segmentos: barra apilada y leyenda.
-function BreakdownBlock({ block }) {
+function BreakdownBlock({ block, ctx }) {
   const items = (block.items ?? []).filter((it) => it.value > 0)
   const total = items.reduce((n, it) => n + it.value, 0)
 
@@ -197,27 +251,74 @@ function BreakdownBlock({ block }) {
         <p className="text-sm text-muted-foreground">{block.empty || 'Sin elementos.'}</p>
       ) : (
         <>
-          <div className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-muted">
+          <StackedBar items={items} total={total} ctx={ctx} />
+          <ul className="-mx-2 flex flex-col text-sm">
             {items.map((it, i) => (
-              <div
-                key={i}
-                className={TONE_BG[it.tone] || 'bg-primary'}
-                style={{ width: ratio(it.value / total) }}
-                title={`${it.label}: ${it.value}`}
-              />
-            ))}
-          </div>
-          <ul className="flex flex-col gap-1 text-sm">
-            {items.map((it, i) => (
-              <li key={i} className="flex items-center gap-2">
-                <span className={cn('size-2 rounded-full', TONE_BG[it.tone] || 'bg-primary')} />
-                <span className="flex-1 truncate">{it.label}</span>
-                <span className="text-muted-foreground tabular-nums">{it.value}</span>
+              <li key={i}>
+                <Detail
+                  detail={it.detail}
+                  ctx={ctx}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-2 py-0.5',
+                    it.detail && 'hover:bg-accent'
+                  )}
+                >
+                  <span className={cn('size-2 rounded-full', TONE_BG[it.tone] || 'bg-primary')} />
+                  <span className="flex-1 truncate">{it.label}</span>
+                  <span className="text-muted-foreground tabular-nums">{it.value}</span>
+                </Detail>
               </li>
             ))}
           </ul>
         </>
       )}
+    </div>
+  )
+}
+
+function StackedBar({ items, total, ctx, className }) {
+  return (
+    <div className={cn('flex h-2 gap-0.5 overflow-hidden rounded-full bg-muted', className)}>
+      {items.map((it, i) => (
+        <Detail
+          key={i}
+          detail={it.detail}
+          ctx={ctx}
+          className={cn(TONE_BG[it.tone] || 'bg-primary', it.detail && 'hover:opacity-75')}
+          style={{ width: ratio(it.value / total) }}
+          title={`${it.label}: ${it.value}`}
+        />
+      ))}
+    </div>
+  )
+}
+
+// Reparto compacto dentro de un elemento (p. ej. tareas de una historia por estado).
+function ItemBreakdown({ items: all, ctx, className }) {
+  const items = (all ?? []).filter((it) => it.value > 0)
+  const total = items.reduce((n, it) => n + it.value, 0)
+  if (!total) return null
+  return (
+    <div className={cn('flex flex-col gap-1', className)}>
+      <StackedBar items={items} total={total} ctx={ctx} className="h-1.5" />
+      <ul className="-mx-1 flex flex-wrap gap-x-1 text-xs text-muted-foreground">
+        {items.map((it, i) => (
+          <li key={i}>
+            <Detail
+              detail={it.detail}
+              ctx={ctx}
+              className={cn(
+                'flex items-center gap-1 rounded px-1',
+                it.detail && 'hover:bg-accent hover:text-foreground'
+              )}
+            >
+              <span className={cn('size-1.5 rounded-full', TONE_BG[it.tone] || 'bg-primary')} />
+              {it.label}
+              <span className="tabular-nums">{it.value}</span>
+            </Detail>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -229,8 +330,8 @@ function ListBlock({ block, ctx }) {
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
   const matches = (it) =>
-    [it.title, it.description, ...(it.badges ?? []).map((b) => badgeOf(b).label)].some((s) =>
-      s?.toLowerCase().includes(q)
+    [it.title, it.description, it.meta, ...(it.badges ?? []).map((b) => badgeOf(b).label)].some(
+      (s) => s?.toLowerCase().includes(q)
     )
   const items = (block.items ?? []).filter((it) => !q || matches(it) || it.children?.some(matches))
 
@@ -273,6 +374,7 @@ function ItemRow({ item, ctx, compact }) {
           <p className="truncate text-sm text-muted-foreground">{item.description}</p>
         )}
         {item.meta && <p className="text-xs text-muted-foreground">{item.meta}</p>}
+        <ItemBreakdown items={item.breakdown} ctx={ctx} className="mt-2 max-w-md" />
       </div>
       <div className="flex shrink-0 gap-2">
         {item.actions?.map((a) => (
@@ -389,6 +491,7 @@ function KanbanCard({ item, ctx, dim }) {
         <p className="truncate text-xs text-muted-foreground">{item.description}</p>
       )}
       {item.meta && <p className="text-xs text-muted-foreground">{item.meta}</p>}
+      <ItemBreakdown items={item.breakdown} ctx={ctx} className="mt-1" />
       {item.children?.length > 0 && (
         <Collapsible open={open} onOpenChange={setOpen}>
           <CollapsibleTrigger className="group flex items-center gap-1 py-1 text-xs text-muted-foreground hover:text-foreground">

@@ -39,7 +39,6 @@ const sprintDates = ({ attributes: a = {} }) =>
   a.startDate && a.finishDate
     ? `${formatDate(a.startDate)} – ${formatDate(a.finishDate)}`
     : 'Sin fechas'
-const TIMEFRAME = { past: 'Sprint pasado', current: 'Sprint en curso', future: 'Sprint futuro' }
 
 const refresh = { id: 'refresh', icon: 'refresh', title: 'Recargar' }
 const linkAction = { id: 'link', label: 'Vincular proyecto', icon: 'link' }
@@ -326,29 +325,54 @@ exports.activate = (ctx) => {
   const isDone = (md, item) => stateInfo(md, item).category === 'Completed'
 
   // Recuento por estado en el orden del flujo de trabajo; sin los eliminados.
-  function breakdown(md, title, list, empty) {
+  // `detail(estado, elementos)` da el modal que se abre al pulsar cada estado.
+  function byState(md, list, detail) {
     const order = list.flatMap((it) => (md.states[it.type] ?? []).map((s) => s.name))
     const counts = new Map()
     for (const it of list) {
       if (stateInfo(md, it).category === 'Removed') continue
-      const c = counts.get(it.state) ?? { label: it.state, value: 0, tone: stateInfo(md, it).tone }
+      const c = counts.get(it.state) ?? {
+        label: it.state,
+        value: 0,
+        tone: stateInfo(md, it).tone,
+        items: []
+      }
       c.value++
+      c.items.push(it)
       counts.set(it.state, c)
     }
-    const items = [...counts.values()].sort(
-      (a, b) => order.indexOf(a.label) - order.indexOf(b.label)
-    )
-    return { type: 'breakdown', title, items, empty }
+    return [...counts.values()]
+      .sort((a, b) => order.indexOf(a.label) - order.indexOf(b.label))
+      .map(({ items, ...c }) => ({ ...c, detail: detail?.(c.label, items) }))
   }
 
-  function sprintStats(md, sprint, stories, tasks, bugs) {
+  const breakdown = (md, title, list, empty, detail) => ({
+    type: 'breakdown',
+    title,
+    items: byState(md, list, detail),
+    empty
+  })
+
+  // Modal con las historias (con sus tareas) o los elementos sueltos de un estado.
+  const storiesIn = (md, link) => (state, list) => ({
+    title: `Historias en «${state}» (${list.length})`,
+    blocks: [storyList(md, link, list)]
+  })
+  const itemsIn = (md, link, noun) => (state, list) => ({
+    title: `${noun} en «${state}» (${list.length})`,
+    blocks: [workItemList(md, link, list)]
+  })
+
+  // `stories` ya vienen con sus tareas y sin las eliminadas.
+  function sprintStats(md, link, sprint, stories, tasks, bugs) {
     const live = (list) => list.filter((it) => stateInfo(md, it).category !== 'Removed')
-    const [s, t, b] = [live(stories), live(tasks), live(bugs)]
+    const [s, t, b] = [stories, live(tasks), live(bugs)]
     const sDone = s.filter((it) => isDone(md, it)).length
     const tDone = t.filter((it) => isDone(md, it)).length
     const bOpen = b.filter((it) => !isDone(md, it)).length
     const hours = t.reduce((n, it) => n + (isDone(md, it) ? 0 : it.remaining), 0)
 
+    const pending = s.filter((it) => !isDone(md, it))
     const { startDate, finishDate } = sprint.attributes ?? {}
     let days = { label: 'Días restantes', value: '—', hint: 'El sprint no tiene fechas' }
     if (startDate && finishDate) {
@@ -364,56 +388,107 @@ exports.activate = (ctx) => {
         tone: left <= 2 && sDone < s.length ? 'warning' : undefined
       }
     }
+    days.detail = {
+      title: sprint.name,
+      description: `${sprintDates(sprint)} · ${sprint.path}`,
+      blocks: [
+        { type: 'heading', text: `Historias pendientes (${pending.length})` },
+        storyList(md, link, pending, 'Todas las historias del sprint están completadas.')
+      ]
+    }
 
     return {
       type: 'stats',
       items: [
-        {
-          label: TIMEFRAME[sprint.attributes?.timeFrame] ?? 'Sprint',
-          value: sprint.name,
-          hint: sprint.path
-        },
         days,
         {
           label: 'Historias completadas',
           value: `${sDone}/${s.length}`,
           progress: s.length ? sDone / s.length : 0,
-          tone: 'success'
+          tone: 'success',
+          detail: {
+            title: `Historias de ${sprint.name}`,
+            description: `${sDone} de ${s.length} completadas`,
+            blocks: [
+              breakdown(md, 'Por estado', s, 'Sin historias en el sprint.', storiesIn(md, link)),
+              storyList(md, link, s, 'No hay historias de usuario en el sprint.')
+            ]
+          }
         },
         {
           label: 'Tareas completadas',
           value: `${tDone}/${t.length}`,
           progress: t.length ? tDone / t.length : 0,
           hint: hours ? `${hours} h de trabajo restante` : undefined,
-          tone: 'info'
+          tone: 'info',
+          detail: {
+            title: `Tareas de ${sprint.name}`,
+            description: `${tDone} de ${t.length} completadas${hours ? ` · ${hours} h restantes` : ''}`,
+            blocks: [
+              breakdown(
+                md,
+                'Por estado',
+                t,
+                'Sin tareas en el sprint.',
+                itemsIn(md, link, 'Tareas')
+              ),
+              workItemList(md, link, t, 'No hay tareas en el sprint.')
+            ]
+          }
         },
         {
           label: 'Bugs abiertos',
           value: bOpen,
           hint: `${b.length} en el sprint`,
-          tone: bOpen ? 'error' : 'success'
+          tone: bOpen ? 'error' : 'success',
+          detail: {
+            title: `Bugs de ${sprint.name}`,
+            description: `${bOpen} abiertos de ${b.length}`,
+            blocks: [
+              breakdown(md, 'Por estado', b, 'Sin bugs en el sprint.', itemsIn(md, link, 'Bugs')),
+              workItemList(md, link, b, 'No hay bugs en el sprint.')
+            ]
+          }
         }
       ]
     }
   }
 
   const ownerOf = (it) => it.assignedTo || 'Sin asignar'
-  const tasksDone = (md, story) =>
-    story.tasks.length &&
-    `${story.tasks.filter((t) => isDone(md, t)).length}/${story.tasks.length} tareas completadas`
-  const hoursLeft = (md, story) =>
-    story.tasks.reduce((n, t) => n + (isDone(md, t) ? 0 : t.remaining), 0)
+  const hoursLeft = (md, story) => {
+    const h = story.tasks.reduce((n, t) => n + (isDone(md, t) ? 0 : t.remaining), 0)
+    return h ? `${h} h restantes` : null
+  }
   const byFlow = (md) => (a, b) => order(md, a) - order(md, b) || a.id - b.id
+
+  // Tarea o bug como fila de una lista.
+  const workItem = (md, link, it) => ({
+    id: String(it.id),
+    title: `#${it.id} ${it.title}`,
+    badges: [{ label: it.state, tone: stateInfo(md, it).tone }],
+    meta: [ownerOf(it), it.remaining && `${it.remaining} h restantes`].filter(Boolean).join(' · '),
+    actions: [openAction(link, it)]
+  })
+
+  const workItemList = (md, link, list, empty) => ({
+    type: 'list',
+    searchable: list.length > 5,
+    empty,
+    items: [...list].sort(byFlow(md)).map((it) => workItem(md, link, it))
+  })
 
   // Tareas de una historia como subelementos (lista y kanban).
   const taskItems = (md, link, story) =>
-    story.tasks.sort(byFlow(md)).map((t) => ({
-      id: String(t.id),
-      title: `#${t.id} ${t.title}`,
-      badges: [{ label: t.state, tone: stateInfo(md, t).tone }],
-      meta: [ownerOf(t), t.remaining && `${t.remaining} h restantes`].filter(Boolean).join(' · '),
-      filterValues: [ownerOf(t)],
-      actions: [openAction(link, t)]
+    story.tasks
+      .sort(byFlow(md))
+      .map((t) => ({ ...workItem(md, link, t), filterValues: [ownerOf(t)] }))
+
+  // Avance de las tareas de una historia por estado; cada estado abre sus tareas.
+  const taskProgress = (md, link, story) =>
+    byState(md, story.tasks, (state, list) => ({
+      title: `#${story.id} ${story.title}`,
+      description: `Tareas en «${state}» (${list.length})`,
+      blocks: [workItemList(md, link, list)]
     }))
 
   function storyList(md, link, stories, empty) {
@@ -421,13 +496,14 @@ exports.activate = (ctx) => {
       type: 'list',
       searchable: stories.length > 5,
       empty,
-      items: stories.sort(byFlow(md)).map((it) => ({
+      items: [...stories].sort(byFlow(md)).map((it) => ({
         id: String(it.id),
         title: `#${it.id} ${it.title}`,
         badges: [{ label: it.state, tone: stateInfo(md, it).tone }],
-        meta: [`Actualizada el ${formatDate(it.changed)}`, tasksDone(md, it)]
+        meta: [`Actualizada el ${formatDate(it.changed)}`, hoursLeft(md, it)]
           .filter(Boolean)
           .join(' · '),
+        breakdown: taskProgress(md, link, it),
         childrenLabel: `Tareas (${it.tasks.length})`,
         children: taskItems(md, link, it),
         actions: [openAction(link, it)]
@@ -460,9 +536,8 @@ exports.activate = (ctx) => {
             id: String(it.id),
             title: `#${it.id} ${it.title}`,
             description: ownerOf(it),
-            meta: [tasksDone(md, it), hoursLeft(md, it) && `${hoursLeft(md, it)} h restantes`]
-              .filter(Boolean)
-              .join(' · '),
+            meta: hoursLeft(md, it),
+            breakdown: taskProgress(md, link, it),
             // Se filtra por el responsable de la historia y por los de sus tareas.
             filterValues: [...new Set([ownerOf(it), ...it.tasks.map(ownerOf)])],
             childrenLabel: `Tareas (${it.tasks.length})`,
@@ -558,23 +633,38 @@ exports.activate = (ctx) => {
     const data = await load(project)
     if (!data) return unlinked
     const { link, team, md, sprint, me, stories, tasks, bugs, live } = data
-    const mine = await withTasks(
-      link,
-      md,
-      stories.filter((it) => live(it) && it.assignedId === me)
-    )
+    const all = await withTasks(link, md, stories.filter(live))
+    const mine = all.filter((it) => it.assignedId === me)
 
     return {
       ...header(data),
       blocks: sprint
         ? [
-            sprintStats(md, sprint, stories, tasks, bugs),
+            sprintStats(md, link, sprint, all, tasks, bugs),
             {
               type: 'columns',
               blocks: [
-                breakdown(md, 'Historias por estado', stories, 'Sin historias en el sprint.'),
-                breakdown(md, 'Tareas por estado', tasks, 'Sin tareas en el sprint.'),
-                breakdown(md, 'Bugs por estado', bugs, 'Sin bugs en el sprint.')
+                breakdown(
+                  md,
+                  'Historias por estado',
+                  all,
+                  'Sin historias en el sprint.',
+                  storiesIn(md, link)
+                ),
+                breakdown(
+                  md,
+                  'Tareas por estado',
+                  tasks,
+                  'Sin tareas en el sprint.',
+                  itemsIn(md, link, 'Tareas')
+                ),
+                breakdown(
+                  md,
+                  'Bugs por estado',
+                  bugs,
+                  'Sin bugs en el sprint.',
+                  itemsIn(md, link, 'Bugs')
+                )
               ]
             },
             { type: 'heading', text: `Mis historias en ${sprint.name} (${mine.length})` },
