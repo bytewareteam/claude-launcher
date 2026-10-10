@@ -1,3 +1,13 @@
+## 1.4.0 (2026-10-10)
+
+### 🚀 Features
+
+- acordeones cerrados por defecto ([23645a4](https://github.com/bytewareteam/claude-launcher/commit/23645a4))
+
+### ❤️ Thank You
+
+- Willian Monoga @bytewareteam
+
 ## 1.3.0 (2026-10-10)
 
 ### 🚀 Features
