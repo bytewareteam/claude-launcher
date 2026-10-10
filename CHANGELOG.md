@@ -1,3 +1,17 @@
+## 0.5.0 (2026-10-10)
+
+### 🚀 Features
+
+- extensión de Azure DevOps para listar y clonar repositorios ([c07c153](https://github.com/bytewareteam/claude-launcher/commit/c07c153))
+
+### 🩹 Fixes
+
+- **github:** clonar por HTTPS aunque gh use ssh ([3a4e7d5](https://github.com/bytewareteam/claude-launcher/commit/3a4e7d5))
+
+### ❤️ Thank You
+
+- Willian Monoga @bytewareteam
+
 ## 0.4.0 (2026-10-10)
 
 ### 🚀 Features
