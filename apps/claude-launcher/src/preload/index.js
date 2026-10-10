@@ -34,6 +34,13 @@ contextBridge.exposeInMainWorld('api', {
     open: invoke('ide:open')
   },
   openUrl: invoke('open:url'),
+  dev: {
+    worktree: invoke('dev:worktree'),
+    install: invoke('dev:install'),
+    open: invoke('dev:open'),
+    cancel: invoke('dev:cancel'),
+    onRequest: on('dev:request')
+  },
   dashboard: invoke('dashboard'),
   settings: {
     get: invoke('settings:get'),

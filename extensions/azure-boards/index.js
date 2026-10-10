@@ -2,6 +2,8 @@
 // sprint del equipo en Azure DevOps. Usa la sesión de Azure CLI (`az login`), así que no guarda
 // tokens.
 // El proyecto de Azure DevOps se deduce del remoto git de sus repos o se elige a mano.
+// «Iniciar desarrollo» pide a la app un worktree y una sesión de Claude con el elemento como
+// contexto (permiso `develop`).
 
 // Id de recurso de Azure DevOps en Microsoft Entra ID (fijo para todos los tenants).
 const RESOURCE = '499b84ac-1321-427f-aa17-267ca6975798'
@@ -48,6 +50,27 @@ const sprintDates = ({ attributes: a = {} }) =>
 // Los campos de texto de Azure DevOps son HTML: la app lo sanea y lo pinta (bloque `html`).
 // Vacío si solo lleva etiquetas o espacios (p. ej. `<div><br></div>`).
 const hasText = (html) => /\S/.test(String(html ?? '').replace(/<[^>]*>|&nbsp;/gi, ''))
+
+// HTML de Azure DevOps → Markdown sencillo para el contexto que lee Claude.
+const ENTITIES = { nbsp: ' ', lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' }
+function toMarkdown(html) {
+  if (!hasText(html)) return ''
+  return String(html)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<h(\d)[^>]*>/gi, (_, n) => `\n${'#'.repeat(Math.min(6, Number(n) + 3))} `)
+    .replace(/<li[^>]*>/gi, '\n- ')
+    .replace(/<(td|th)[^>]*>/gi, ' | ')
+    .replace(/<\/(p|div|h\d|tr|ul|ol|table)>/gi, '\n')
+    .replace(/<a\s[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)')
+    .replace(/<(b|strong)>(.*?)<\/\1>/gi, '**$2**')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&(#\d+|[a-z]+);/gi, (m, e) =>
+      e[0] === '#' ? String.fromCodePoint(Number(e.slice(1))) : (ENTITIES[e.toLowerCase()] ?? m)
+    )
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
 
 const refresh = { id: 'refresh', icon: 'refresh', title: 'Sincronizar con Azure DevOps' }
 const linkAction = { id: 'link', label: 'Vincular proyecto', icon: 'link' }
@@ -281,13 +304,17 @@ exports.activate = (ctx) => {
     }))
   }
 
-  // Descripción y criterios de aceptación de una historia (HTML).
-  async function storyText(link, id) {
-    const fields = ['System.Description', 'Microsoft.VSTS.Common.AcceptanceCriteria']
+  // Descripción, criterios de aceptación y pasos para reproducir (bugs) de un elemento (HTML).
+  async function itemText(link, id) {
+    const fields = [
+      'System.Description',
+      'Microsoft.VSTS.Common.AcceptanceCriteria',
+      'Microsoft.VSTS.TCM.ReproSteps'
+    ]
     const { fields: f = {} } = await api(
       `${base(link)}/_apis/wit/workitems/${id}?fields=${fields.join(',')}&${API}`
     )
-    return { description: f[fields[0]], criteria: f[fields[1]] }
+    return { description: f[fields[0]], criteria: f[fields[1]], repro: f[fields[2]] }
   }
 
   // Comentarios de un elemento, del más reciente al más antiguo. La API sigue en preview.
@@ -575,7 +602,7 @@ exports.activate = (ctx) => {
     title: `#${it.id} ${it.title}`,
     badges: [{ label: it.state, tone: stateInfo(md, it).tone }],
     meta: [ownerOf(it), it.remaining && `${it.remaining} h restantes`].filter(Boolean).join(' · '),
-    actions: [openAction(link, it)]
+    actions: [...developActions(it), openAction(link, it)]
   })
 
   const workItemList = (md, link, list, empty) => ({
@@ -614,7 +641,7 @@ exports.activate = (ctx) => {
         breakdown: taskProgress(md, link, it),
         childrenLabel: `Tareas (${it.tasks.length})`,
         children: taskItems(md, link, it),
-        actions: [openAction(link, it)]
+        actions: [...developActions(it), openAction(link, it)]
       }))
     }
   }
@@ -659,7 +686,8 @@ exports.activate = (ctx) => {
         breakdown: taskProgress(md, link, it),
         // Se filtra por el responsable de la historia y por los de sus tareas.
         filterValues: [...new Set([ownerOf(it), ...it.tasks.map(ownerOf)])],
-        action: { id: 'story', args: { id: it.id } }
+        action: { id: 'story', args: { id: it.id } },
+        actions: developActions(it)
       }))
     }
   }
@@ -675,7 +703,7 @@ exports.activate = (ctx) => {
         description: ownerOf(t),
         meta: t.remaining ? `${t.remaining} h restantes` : undefined,
         filterValues: [ownerOf(t)],
-        actions: [openAction(link, t)]
+        actions: [...developActions(t), openAction(link, t)]
       }))
     }
   }
@@ -686,6 +714,10 @@ exports.activate = (ctx) => {
     title: 'Abrir en Azure DevOps',
     args: { url: `${base(link)}/_workitems/edit/${it.id}` }
   })
+
+  // Solo si la app lo admite (las versiones anteriores no tienen `ctx.dev`).
+  const developActions = (it) =>
+    ctx.dev ? [{ id: 'develop', icon: 'play', title: 'Iniciar desarrollo', args: { id: it.id } }] : []
 
   // Posición del estado en el flujo de su tipo: pendientes primero, completadas al final.
   const order = (md, it) => (md.states[it.type] ?? []).findIndex((s) => s.name === it.state)
@@ -741,7 +773,7 @@ exports.activate = (ctx) => {
   // Descripción, criterios y comentarios de una historia, desde la memoria si son recientes.
   const storyDetail = (project, link, id) =>
     remember(`${project.id}:story:${id}`, () =>
-      Promise.all([storyText(link, id), comments(link, id)])
+      Promise.all([itemText(link, id), comments(link, id)])
     ).value
 
   const ago = (at) => {
@@ -865,6 +897,7 @@ exports.activate = (ctx) => {
       description: `${sprint.name} · ${story.type} · ${ownerOf(story)} · sincronizado ${ago(syncedAt)}`,
       actions: [
         { id: 'back', label: 'Volver al tablero', icon: 'arrow-left' },
+        ...developActions(story).map((a) => ({ ...a, label: 'Iniciar desarrollo' })),
         { ...openAction(link, story), label: 'Abrir en Azure DevOps' },
         refresh
       ],
@@ -913,8 +946,82 @@ exports.activate = (ctx) => {
     }
   }
 
+  // --- Iniciar desarrollo -----------------------------------------------------------------
+
+  // Elemento a desarrollar y su historia: una historia o un bug sueltos, o una tarea con la
+  // historia de la que cuelga (si está en el sprint).
+  function findItem({ all, tasks, bugs }, id) {
+    const story = all.find((s) => s.id === id || s.tasks.some((t) => t.id === id))
+    const task = story?.tasks.find((t) => t.id === id) ?? tasks.find((t) => t.id === id)
+    const item = task ?? story ?? bugs.find((b) => b.id === id)
+    return item && { item, parent: task && story }
+  }
+
+  // feature/<historia>[-<tarea>] o bugfix/<bug>[-<tarea>].
+  function branchFor(md, item, parent) {
+    const root = parent ?? item
+    const prefix = (md.categories[BUG] ?? []).includes(root.type) ? 'bugfix' : 'feature'
+    return `${prefix}/${root.id}${parent ? `-${item.id}` : ''}`
+  }
+
+  // Sección Markdown con los textos de un elemento y sus comentarios más recientes.
+  async function describe(project, link, md, it) {
+    const [{ description, criteria, repro }, notes] = await storyDetail(project, link, it.id)
+    const parts = [
+      `## ${it.type} #${it.id}: ${it.title}`,
+      [
+        `- Estado: ${it.state}`,
+        `- Asignado a: ${ownerOf(it)}`,
+        `- Azure DevOps: ${base(link)}/_workitems/edit/${it.id}`
+      ].join('\n')
+    ]
+    const add = (title, text) => text && parts.push(`### ${title}\n\n${text}`)
+    add('Descripción', toMarkdown(description))
+    add('Criterios de aceptación', toMarkdown(criteria))
+    add('Pasos para reproducir', toMarkdown(repro))
+    add(
+      'Tareas',
+      [...(it.tasks ?? [])]
+        .sort(byFlow(md))
+        .map((t) => `- #${t.id} ${t.title} (${t.state}, ${ownerOf(t)})`)
+        .join('\n')
+    )
+    add(
+      'Comentarios recientes',
+      notes
+        .slice(0, 10)
+        .map((c) => `**${c.author}** (${c.date}):\n${toMarkdown(c.html)}`)
+        .join('\n\n')
+    )
+    return parts.join('\n\n')
+  }
+
+  async function develop(project, id) {
+    const data = await load(project)
+    const found = data && findItem(data, id)
+    if (!found) throw new Error(`#${id} ya no está en el sprint. Sincroniza y vuelve a probar.`)
+    const { link, md } = data
+    const { item, parent } = found
+    const branch = branchFor(md, item, parent)
+    const intro = parent
+      ? `# Tarea a desarrollar\n\nForma parte de: ${parent.type} #${parent.id}. Céntrate en la tarea; lo demás es contexto.`
+      : `# ${item.type} a desarrollar`
+    const sections = [intro, await describe(project, link, md, item)]
+    if (parent) sections.push(await describe(project, link, md, parent))
+    sections.push(
+      `# Cómo trabajar\n\nRama: \`${branch}\`. Analiza el código, aclara dudas y propón un plan antes de modificar nada.`
+    )
+    await ctx.dev.start({
+      projectId: project.id,
+      branch,
+      title: `#${item.id} ${item.title}`,
+      context: sections.join('\n\n')
+    })
+  }
+
   async function action(id, args, { project }) {
     if (id === 'open') return ctx.ui.openExternal(args.url)
+    if (id === 'develop') return develop(project, args.id)
     if (id === 'story') return void openStory.set(project.id, args.id)
     if (id === 'back') return void openStory.delete(project.id)
     if (id === 'link') return chooseLink(project)

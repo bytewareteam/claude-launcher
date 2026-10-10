@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Toaster } from '@/components/ui/sonner'
 import { VaultProvider } from '@/components/VaultProvider'
 import { ExtensionBridge } from '@/components/ExtensionBridge'
+import { DevelopDialog } from '@/components/DevelopDialog'
 import { errMsg } from '@/lib/api'
 import App from './App'
 
@@ -37,6 +38,7 @@ createRoot(document.getElementById('root')).render(
       <VaultProvider>
         <App />
         <ExtensionBridge />
+        <DevelopDialog />
       </VaultProvider>
       <Toaster theme="dark" position="bottom-right" />
     </QueryClientProvider>

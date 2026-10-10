@@ -33,19 +33,31 @@ export function baseEnv() {
 // para cmd.exe: el fallback los pasa tal cual en una línea de comandos.
 export const CLAUDE_ARGS = /^[\w\s\-=.:/,@]*$/
 
+// Argumentos que añade la propia app (p. ej. el prompt inicial): admiten espacios, pero nada que
+// Windows Terminal (`;`) o cmd.exe interpreten.
+const EXTRA_ARG = /^[^"%!^&|<>;\r\n]*$/
+
 // Windows Terminal pasa el entorno de quien lo invoca a la pestaña nueva,
 // así los secretos no aparecen en la línea de comandos.
-export function openClaude(dir, title, extraEnv = {}, { args = '', newWindow = false } = {}) {
+export function openClaude(
+  dir,
+  title,
+  extraEnv = {},
+  { args = '', newWindow = false } = {},
+  extraArgs = []
+) {
   if (!existsSync(dir)) throw new Error(`No existe el directorio: ${dir}`)
   if (!CLAUDE_ARGS.test(args)) throw new Error('Los argumentos de Claude tienen caracteres no permitidos.')
+  if (!extraArgs.every((a) => EXTRA_ARG.test(a))) throw new Error('Argumento de Claude no admitido.')
   const env = { ...baseEnv(), ...extraEnv }
-  const claudeArgs = args.split(/\s+/).filter(Boolean)
+  const claudeArgs = [...args.split(/\s+/).filter(Boolean), ...extraArgs]
   // Nueva pestaña en la última ventana (crea una si no hay) o ventana nueva.
   const wtArgs = ['-w', newWindow ? 'new' : '0', 'nt', '-d', dir, '--title', title, 'claude', ...claudeArgs]
   const child = spawn('wt.exe', wtArgs, { env, detached: true, stdio: 'ignore' })
   child.on('error', () => {
     // Fallback sin Windows Terminal.
-    spawn('cmd.exe', ['/c', `start "" cmd /k claude ${claudeArgs.join(' ')}`.trim()], {
+    const line = claudeArgs.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')
+    spawn('cmd.exe', ['/c', `start "" cmd /k claude ${line}`.trim()], {
       cwd: dir,
       env,
       detached: true,

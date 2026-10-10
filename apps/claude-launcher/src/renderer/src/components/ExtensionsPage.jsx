@@ -33,6 +33,7 @@ export function permissionLines(p) {
   if (p.exec?.length) lines.push(`Ejecutar programas: ${p.exec.join(', ')}`)
   if (p.projects) lines.push('Ver tus proyectos y añadirles repositorios')
   if (p.dialogs) lines.push('Abrir diálogos para elegir carpetas')
+  if (p.develop) lines.push('Proponerte crear worktrees y abrir Claude Code con un contexto')
   return lines
 }
 
