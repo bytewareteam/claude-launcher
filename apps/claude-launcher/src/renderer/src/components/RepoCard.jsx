@@ -1,4 +1,4 @@
-import { Folder, Terminal, X } from 'lucide-react'
+import { Folder, Globe, Terminal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EnvSection } from '@/components/EnvSection'
 import { WorktreeSection } from '@/components/WorktreeSection'
@@ -9,6 +9,8 @@ import { useLaunch } from '@/lib/useLaunch'
 export function RepoCard({ project, repo }) {
   const launch = useLaunch()
   const removeRepo = useAction(() => api.removeRepo(project.id, repo.id))
+  // useAction para que un repo sin remoto muestre el error como toast.
+  const openWeb = useAction(() => api.openWeb(repo.path))
   const scope = { projectId: project.id, repoId: repo.id }
 
   return (
@@ -24,6 +26,13 @@ export function RepoCard({ project, repo }) {
           </Button>
           <Button variant="outline" onClick={() => api.openFolder(repo.path)}>
             <Folder /> Carpeta
+          </Button>
+          <Button
+            variant="outline"
+            title="Abrir el repositorio remoto en el navegador"
+            onClick={() => openWeb.mutate()}
+          >
+            <Globe /> Web
           </Button>
           <Button
             variant="ghost"
