@@ -18,7 +18,7 @@
       "projects": true,
       "dialogs": true
     },
-    "views": [{ "id": "repos", "title": "Azure DevOps", "icon": "layers" }],
-    "repoSources": [{ "id": "repos", "title": "Azure DevOps", "icon": "layers" }]
+    "views": [{ "id": "repos", "title": "Azure DevOps", "icon": "azure" }],
+    "repoSources": [{ "id": "repos", "title": "Azure DevOps", "icon": "azure" }]
   }
 }
