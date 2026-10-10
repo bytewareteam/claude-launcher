@@ -133,11 +133,12 @@ exports.activate = (ctx) => {
       }
     },
 
-    async action(id, args) {
+    // Desde «Añadir repositorio» de un proyecto llega `context.project`: se clona en él.
+    async action(id, args, context) {
       if (id === 'refresh') return
       if (id === 'open') return ctx.ui.openExternal(args.url)
       if (id === 'org') return chooseOrg()
-      if (id === 'clone') return clone(args)
+      if (id === 'clone') return clone(args, context.project)
     }
   })
 
@@ -151,7 +152,7 @@ exports.activate = (ctx) => {
     if (org) await ctx.storage.set('org', org)
   }
 
-  async function clone({ name, project, url }) {
+  async function clone({ name, project, url }, target) {
     const parent = await ctx.ui.pickFolder({
       title: `¿Dónde clonar ${project}/${name}?`,
       defaultPath: await ctx.storage.get('cloneDir')
@@ -171,6 +172,11 @@ exports.activate = (ctx) => {
         GIT_CONFIG_VALUE_0: `Authorization: Bearer ${await token()}`
       }
     })
+
+    if (target) {
+      await ctx.projects.addRepo(target.id, dest)
+      return { toast: `${name} clonado y añadido a ${target.name}.`, close: true }
+    }
 
     const projects = await ctx.projects.list()
     const projectId = await ctx.ui.quickPick(

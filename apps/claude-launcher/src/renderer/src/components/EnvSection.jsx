@@ -25,7 +25,7 @@ export function EnvSection({ id, scope, label }) {
   )
 }
 
-function EnvPanel({ scope }) {
+export function EnvPanel({ scope }) {
   const { data: vault } = useVaultStatus()
   const askVault = useAskVault()
   const { data: vars = [] } = useVars(scope)

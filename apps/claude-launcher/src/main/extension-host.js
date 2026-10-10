@@ -3,8 +3,7 @@
 // que necesite de la app lo pide por mensajes, y el principal comprueba sus permisos.
 import { createRequire } from 'module'
 import { execFile } from 'child_process'
-import { existsSync } from 'fs'
-import { delimiter, extname, join } from 'path'
+import { CMD_UNSAFE, isScript, whichWin } from './which'
 
 const port = process.parentPort
 let manifest
@@ -24,18 +23,6 @@ function host(method, ...params) {
 
 // --- API que recibe la extensión en activate(ctx) ------------------------------------
 
-// Busca `cmd` en PATH como cmd.exe (con PATHEXT) para saber si es un script .cmd/.bat,
-// que execFile no puede lanzar sin shell (p. ej. `az`).
-function whichWin(cmd) {
-  const exts = extname(cmd) ? [''] : (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';')
-  for (const dir of (process.env.PATH || '').split(delimiter).filter(Boolean))
-    for (const ext of exts) if (existsSync(join(dir, cmd + ext))) return join(dir, cmd + ext)
-  return null
-}
-
-// Caracteres que cmd.exe interpreta incluso entre comillas: no se pueden pasar con seguridad.
-const CMD_UNSAFE = /["%!^&|<>\r\n]/
-
 function exec(cmd, args = [], { cwd, timeout = 60_000, env } = {}) {
   // El principal no ve este proceso hijo: el permiso se comprueba aquí contra el manifest.
   if (!manifest.permissions.exec.includes(cmd))
@@ -49,7 +36,7 @@ function exec(cmd, args = [], { cwd, timeout = 60_000, env } = {}) {
       e.code = 'ENOENT'
       return Promise.reject(e)
     }
-    if (/\.(cmd|bat)$/i.test(found)) {
+    if (isScript(found)) {
       if (args.some((a) => CMD_UNSAFE.test(String(a))))
         return Promise.reject(new Error(`Argumento no admitido para «${cmd}» (es un script .cmd).`))
       // La línea se monta aquí (no con args + shell, obsoleto en Node): ya está validada.

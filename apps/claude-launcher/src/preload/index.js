@@ -25,8 +25,14 @@ contextBridge.exposeInMainWorld('api', {
   worktreeStatus: invoke('worktree:status'),
   removeWorktree: invoke('worktree:remove'),
   openClaude: invoke('open:claude'),
+  openShell: invoke('open:shell'),
   openFolder: invoke('open:folder'),
   openWeb: invoke('open:web'),
+  ide: {
+    list: invoke('ide:list'),
+    setDefault: invoke('ide:setDefault'),
+    open: invoke('ide:open')
+  },
   openUrl: invoke('open:url'),
   dashboard: invoke('dashboard'),
   settings: {

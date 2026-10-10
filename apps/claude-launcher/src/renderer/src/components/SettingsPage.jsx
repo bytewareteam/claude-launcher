@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
+  Check,
+  Code,
   FolderOpen,
   FolderSearch,
   KeyRound,
@@ -8,8 +10,7 @@ import {
   LockOpen,
   Puzzle,
   RotateCcw,
-  ShieldPlus,
-  Terminal
+  ShieldPlus
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,11 +19,13 @@ import { ClaudeArgsInput } from '@/components/ClaudeArgsInput'
 import { ExtensionsPage } from '@/components/ExtensionsPage'
 import { useAskVault } from '@/components/VaultProvider'
 import { api } from '@/lib/api'
-import { useAction, useSettings, useVaultStatus } from '@/lib/queries'
+import { ClaudeIcon, ideIcon } from '@/lib/brandIcons'
+import { useAction, useIdes, useSettings, useVaultStatus } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 
 const SECTIONS = [
-  { id: 'claude', label: 'Claude', icon: Terminal },
+  { id: 'claude', label: 'Claude', icon: ClaudeIcon },
+  { id: 'ide', label: 'IDE', icon: Code },
   { id: 'vault', label: 'Bóveda', icon: KeyRound },
   { id: 'extensions', label: 'Extensiones', icon: Puzzle }
 ]
@@ -54,11 +57,15 @@ export function SettingsPage({ initialTab }) {
       <header className="mb-5">
         <h1 className="text-2xl font-semibold">Configuración</h1>
         <p className="text-sm text-muted-foreground">
-          Cómo se abre Claude, la bóveda de secretos y las extensiones instaladas.
+          Cómo se abre Claude, el IDE por defecto, la bóveda de secretos y las extensiones
+          instaladas.
         </p>
       </header>
       <div className="flex gap-6">
-        <nav className="flex w-44 shrink-0 flex-col gap-0.5" aria-label="Secciones de configuración">
+        <nav
+          className="flex w-44 shrink-0 flex-col gap-0.5"
+          aria-label="Secciones de configuración"
+        >
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -76,6 +83,7 @@ export function SettingsPage({ initialTab }) {
         </nav>
         <div className="min-w-0 flex-1">
           {tab === 'claude' && <ClaudeSettings />}
+          {tab === 'ide' && <IdeSettings />}
           {tab === 'vault' && <VaultSettings />}
           {tab === 'extensions' && <ExtensionsPage embedded />}
         </div>
@@ -168,6 +176,66 @@ function ClaudeSettings() {
   )
 }
 
+function IdeSettings() {
+  const { data, isPending } = useIdes()
+  const setDefault = useAction(api.ide.setDefault, { onSuccess: saved })
+  const ides = data?.ides ?? []
+  const installed = ides.filter((i) => i.path)
+  const missing = ides.filter((i) => !i.path)
+  // Sin elección (o si el elegido ya no está), se usa el primero instalado.
+  const current = installed.find((i) => i.id === data?.selected) || installed[0]
+
+  return (
+    <div className="flex max-w-2xl flex-col gap-4">
+      <Card
+        title="IDE por defecto"
+        description="El que abre el botón de IDE de cada repo y worktree. «Abrir con…» permite usar otro puntualmente."
+      >
+        {isPending && <p className="text-sm text-muted-foreground">Buscando IDEs instalados…</p>}
+        {data && !installed.length && (
+          <p className="text-sm text-destructive">No se ha encontrado ningún IDE compatible.</p>
+        )}
+        <ul className="grid gap-1.5 sm:grid-cols-2">
+          {installed.map((ide) => {
+            const Icon = ideIcon(ide.id)
+            const selected = ide.id === current?.id
+            return (
+              <li key={ide.id}>
+                <button
+                  type="button"
+                  onClick={() => setDefault.mutate(ide.id)}
+                  aria-pressed={selected}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left transition-colors hover:bg-accent/50',
+                    selected && 'border-primary bg-primary/10 hover:bg-primary/10'
+                  )}
+                >
+                  <Icon className="size-5 shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">{ide.name}</span>
+                    <span
+                      className="block truncate font-mono text-xs text-muted-foreground"
+                      title={ide.path}
+                    >
+                      {ide.path}
+                    </span>
+                  </span>
+                  {selected && <Check className="size-4 shrink-0 text-primary" />}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+        {missing.length > 0 && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            También compatibles si los instalas: {missing.map((i) => i.name).join(', ')}.
+          </p>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 function VaultSettings() {
   const { data: settings } = useSettings()
   const { data: vault } = useVaultStatus()
@@ -193,7 +261,10 @@ function VaultSettings() {
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
-      <Card title="Archivo" description="Base de datos KeePass (.kdbx) donde se guardan los secretos.">
+      <Card
+        title="Archivo"
+        description="Base de datos KeePass (.kdbx) donde se guardan los secretos."
+      >
         <div className="mb-3 flex items-center gap-2">
           <Badge variant={vault.unlocked ? 'default' : 'secondary'}>
             {vault.unlocked ? 'Desbloqueada' : vault.exists ? 'Bloqueada' : 'Sin crear'}

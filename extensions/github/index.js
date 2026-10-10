@@ -73,11 +73,12 @@ exports.activate = (ctx) => {
       }
     },
 
-    async action(id, args) {
+    // Desde «Añadir repositorio» de un proyecto llega `context.project`: se clona en él.
+    async action(id, args, context) {
       if (id === 'refresh') return
       if (id === 'open') return ctx.ui.openExternal(args.url)
       if (id === 'owner') return chooseOwner()
-      if (id === 'clone') return clone(args)
+      if (id === 'clone') return clone(args, context.project)
     }
   })
 
@@ -95,7 +96,7 @@ exports.activate = (ctx) => {
     if (owner) await ctx.storage.set('owner', owner === user ? null : owner)
   }
 
-  async function clone({ repo, name, url }) {
+  async function clone({ repo, name, url }, target) {
     const parent = await ctx.ui.pickFolder({
       title: `¿Dónde clonar ${repo}?`,
       defaultPath: await ctx.storage.get('cloneDir')
@@ -107,6 +108,11 @@ exports.activate = (ctx) => {
     // Con la URL HTTPS gh no usa su `git_protocol` (que puede ser ssh sin clave configurada)
     // y autentica a git con su propio token.
     await ctx.exec('gh', ['repo', 'clone', url, dest], { timeout: 15 * 60_000 })
+
+    if (target) {
+      await ctx.projects.addRepo(target.id, dest)
+      return { toast: `${repo} clonado y añadido a ${target.name}.`, close: true }
+    }
 
     const projects = await ctx.projects.list()
     const projectId = await ctx.ui.quickPick(

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
-import { FolderGit2, FolderKanban, GitBranch, History, House, Plus, Terminal } from 'lucide-react'
+import { FolderGit2, FolderKanban, GitBranch, History, House, Plus } from 'lucide-react'
 import {
   CommandDialog,
   CommandEmpty,
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/command'
 import { wtLabel } from '@/components/WorktreeSection'
 import { api } from '@/lib/api'
+import { ClaudeIcon } from '@/lib/brandIcons'
 import { useDashboard } from '@/lib/queries'
 import { useLaunch } from '@/lib/useLaunch'
 import { timeAgo } from '@/lib/format'
@@ -144,7 +145,7 @@ export function CommandPalette({ open, onOpenChange, projects, onSelect, onNewPr
                 <History />
                 <span className="truncate">{l.title}</span>
                 <CommandShortcut className="flex items-center gap-1 tracking-normal">
-                  <Terminal className="size-3" /> {timeAgo(l.at)}
+                  <ClaudeIcon className="size-3" /> {timeAgo(l.at)}
                 </CommandShortcut>
               </CommandItem>
             ))}

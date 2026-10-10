@@ -66,11 +66,13 @@ function readManifest(dir, source) {
     source,
     permissions: normalizePermissions(cl.permissions),
     views: viewsOf(cl.views),
-    projectTabs: viewsOf(cl.projectTabs)
+    projectTabs: viewsOf(cl.projectTabs),
+    repoSources: viewsOf(cl.repoSources)
   }
 }
 
-// Vistas de la barra lateral (`views`) y pestañas de la pantalla de proyecto (`projectTabs`).
+// Vistas de la barra lateral (`views`), pestañas de la pantalla de proyecto (`projectTabs`) y
+// orígenes desde los que clonar al pulsar «Añadir repositorio» (`repoSources`).
 const viewsOf = (list) =>
   (Array.isArray(list) ? list : []).map((v) => ({
     id: String(v.id),
@@ -97,7 +99,7 @@ export function scan() {
       } catch (err) {
         const id = `${source}:${d.name}`
         ext = { id, displayName: d.name, dir, source, invalid: err.message, views: [], log: [] }
-        ext.projectTabs = []
+        ext.projectTabs = ext.repoSources = []
         ext.permissions = normalizePermissions()
       }
       if (extensions.has(ext.id))
@@ -143,6 +145,7 @@ export function list() {
     permissions: ext.permissions,
     views: ext.views,
     projectTabs: ext.projectTabs,
+    repoSources: ext.repoSources,
     enabled: isEnabled(ext),
     granted: isGranted(ext),
     running: !!ext.proc,
