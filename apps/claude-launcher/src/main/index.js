@@ -172,9 +172,12 @@ ipcMain.handle('dashboard', async () => {
 })
 
 ipcMain.handle('open:folder', (_e, dir) => shell.openPath(dir))
-ipcMain.handle('open:web', async (_e, repoPath) =>
-  shell.openExternal(await remoteWebUrl(repoPath))
-)
+ipcMain.handle('open:web', async (_e, repoPath) => shell.openExternal(await remoteWebUrl(repoPath)))
+// Enlaces del contenido HTML de las extensiones: solo https y siempre en el navegador.
+ipcMain.handle('open:url', (_e, url) => {
+  if (!/^https:\/\//i.test(url)) throw new Error('Solo se pueden abrir enlaces https.')
+  return shell.openExternal(url)
+})
 
 // --- Tutorial -------------------------------------------------------------------
 

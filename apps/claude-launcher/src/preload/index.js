@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   openClaude: invoke('open:claude'),
   openFolder: invoke('open:folder'),
   openWeb: invoke('open:web'),
+  openUrl: invoke('open:url'),
   dashboard: invoke('dashboard'),
   onboarding: {
     pending: invoke('onboarding:pending'),

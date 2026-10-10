@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Bug,
   Calendar,
   Cloud,
@@ -25,6 +26,7 @@ import {
 // Iconos que pueden usar las extensiones por nombre. Lista cerrada: así no se empaqueta
 // todo lucide. Si una extensión necesita otro, añádelo aquí y documéntalo.
 const ICONS = {
+  'arrow-left': ArrowLeft,
   bug: Bug,
   calendar: Calendar,
   cloud: Cloud,

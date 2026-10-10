@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { SafeHtml } from '@/components/SafeHtml'
 import { SearchInput } from '@/components/SearchInput'
 import { api, errMsg } from '@/lib/api'
 import { extIcon } from '@/lib/extIcons'
@@ -135,12 +136,14 @@ function Blocks({ blocks, ctx, className }) {
 function Block({ block, ctx }) {
   if (block.type === 'text')
     return <p className={cn('whitespace-pre-line', TONE_TEXT[block.tone])}>{block.text}</p>
+  if (block.type === 'html') return <SafeHtml html={block.html} />
   if (block.type === 'heading') return <h2 className="-mb-2 text-lg font-semibold">{block.text}</h2>
   if (block.type === 'list') return <ListBlock block={block} ctx={ctx} />
   if (block.type === 'stats') return <StatsBlock block={block} ctx={ctx} />
   if (block.type === 'breakdown') return <BreakdownBlock block={block} ctx={ctx} />
   if (block.type === 'tabs') return <TabsBlock block={block} ctx={ctx} />
   if (block.type === 'kanban') return <KanbanBlock block={block} ctx={ctx} />
+  if (block.type === 'section') return <SectionBlock block={block} ctx={ctx} />
   if (block.type === 'columns')
     return (
       <Blocks
@@ -171,6 +174,25 @@ function TabsBlock({ block, ctx }) {
         </TabsContent>
       ))}
     </Tabs>
+  )
+}
+
+// Sección plegable con sus propios bloques: { title, open?, blocks }. Recuerda si se plegó.
+function SectionBlock({ block, ctx }) {
+  const [open, setOpen] = useRememberedOpen(
+    `section:${ctx.extId}/${ctx.viewId}/${ctx.projectId}/${block.id ?? block.title}`,
+    block.open ?? true
+  )
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="group flex items-center gap-1.5 text-lg font-semibold hover:text-muted-foreground">
+        <ChevronRight className="size-4 transition-transform group-data-[state=open]:rotate-90" />
+        {block.title}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <Blocks blocks={block.blocks} ctx={ctx} className="mt-3" />
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -374,6 +396,8 @@ function ItemRow({ item, ctx, compact }) {
           <p className="truncate text-sm text-muted-foreground">{item.description}</p>
         )}
         {item.meta && <p className="text-xs text-muted-foreground">{item.meta}</p>}
+        {item.body && <p className="mt-1 text-sm whitespace-pre-line">{item.body}</p>}
+        {item.html && <SafeHtml html={item.html} className="mt-1" />}
         <ItemBreakdown items={item.breakdown} ctx={ctx} className="mt-2 max-w-md" />
       </div>
       <div className="flex shrink-0 gap-2">
@@ -466,10 +490,32 @@ function KanbanBlock({ block, ctx }) {
   )
 }
 
+// Con `action: { id, args }` toda la tarjeta es pulsable (p. ej. para abrir su detalle).
 function KanbanCard({ item, ctx, dim }) {
   const [open, setOpen] = useState(item.childrenOpen ?? true)
+  const run = useAction(() =>
+    api.extensions.action(ctx.extId, ctx.viewId, item.action.id, item.action.args, ctx.projectId)
+  )
+  const clickable = item.action && !run.isPending
   return (
-    <div className="flex flex-col gap-1 rounded-lg border bg-card px-3 py-2">
+    <div
+      className={cn(
+        'flex flex-col gap-1 rounded-lg border bg-card px-3 py-2',
+        item.action &&
+          'cursor-pointer transition-colors hover:border-primary/50 hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+        run.isPending && 'opacity-60'
+      )}
+      {...(item.action && {
+        role: 'button',
+        tabIndex: 0,
+        onClick: () => clickable && run.mutate(),
+        onKeyDown: (e) => {
+          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
+          e.preventDefault()
+          if (clickable) run.mutate()
+        }
+      })}
+    >
       <div className="flex items-start justify-between gap-2">
         <span className="text-sm font-medium">{item.title}</span>
         <div className="-mt-1 -mr-2 flex shrink-0">
@@ -494,7 +540,10 @@ function KanbanCard({ item, ctx, dim }) {
       <ItemBreakdown items={item.breakdown} ctx={ctx} className="mt-1" />
       {item.children?.length > 0 && (
         <Collapsible open={open} onOpenChange={setOpen}>
-          <CollapsibleTrigger className="group flex items-center gap-1 py-1 text-xs text-muted-foreground hover:text-foreground">
+          <CollapsibleTrigger
+            className="group flex items-center gap-1 py-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={(e) => e.stopPropagation()}
+          >
             <ChevronRight className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
             {item.childrenLabel || `Elementos (${item.children.length})`}
           </CollapsibleTrigger>
@@ -596,7 +645,11 @@ function ActionButton({ action, ctx, variant, small }) {
       size={action.label ? 'default' : small ? 'icon-xs' : 'icon'}
       title={action.title || action.label}
       disabled={run.isPending}
-      onClick={() => run.mutate()}
+      onClick={(e) => {
+        // Dentro de una tarjeta pulsable no debe activar también la tarjeta.
+        e.stopPropagation()
+        run.mutate()
+      }}
     >
       <Icon className={cn(run.isPending && 'animate-spin')} />
       {action.label}
