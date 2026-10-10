@@ -14,6 +14,9 @@ const worktrees = [
   { branch: 'feat/checkout', path: 'C:\\dev\\tienda\\web-checkout', status: '3 cambios', ahead: 5 },
   { branch: 'fix/stock', path: 'C:\\dev\\tienda\\web-stock', status: 'limpio', ahead: 1 }
 ]
+
+// Pestañas del proyecto: las dos últimas las añade la extensión Azure Boards.
+const tabs = ['Repositorios', 'Sprint', 'Kanban']
 ---
 
 <div
@@ -65,10 +68,26 @@ const worktrees = [
         </span>
       </div>
 
+      <div class="flex gap-1 border-b text-xs">
+        {
+          tabs.map((t, i) => (
+            <span
+              class:list={[
+                '-mb-px border-b-2 px-3 py-1.5',
+                i === 0 ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground'
+              ]}
+            >
+              {t}
+            </span>
+          ))
+        }
+      </div>
+
       <div class="rounded-lg border bg-card">
-        <div class="flex items-center justify-between border-b px-4 py-2.5">
+        <div class="flex items-center gap-3 border-b px-4 py-2.5">
           <span class="font-mono text-xs">web</span>
-          <span class="text-xs text-muted-foreground">base: origin/main</span>
+          <span class="ml-auto text-xs text-muted-foreground">base: origin/main</span>
+          <span class="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">Web ↗</span>
         </div>
         <ul class="divide-y">
           {
