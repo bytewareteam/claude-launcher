@@ -1,4 +1,4 @@
-import { AlertTriangle, Clock, FolderGit2, GitBranch, Terminal } from 'lucide-react'
+import { AlertTriangle, Clock, FolderGit2, GitBranch, GraduationCap, Terminal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useDashboard } from '@/lib/queries'
 import { plural, timeAgo } from '@/lib/format'
@@ -11,7 +11,7 @@ function maxDate(...isos) {
   return valid.length ? valid.reduce((a, b) => (a > b ? a : b)) : null
 }
 
-export function Home({ projects, onSelect }) {
+export function Home({ projects, onSelect, onTutorial }) {
   const { data } = useDashboard()
   const launch = useLaunch()
   const summaries = data?.repos ?? {}
@@ -61,9 +61,14 @@ export function Home({ projects, onSelect }) {
 
   return (
     <section className="flex flex-col gap-7">
-      <header>
-        <h1 className="text-2xl font-semibold">Inicio</h1>
-        <p className="text-sm text-muted-foreground">Resumen de tus proyectos y sesiones de Claude.</p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Inicio</h1>
+          <p className="text-sm text-muted-foreground">Resumen de tus proyectos y sesiones de Claude.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onTutorial}>
+          <GraduationCap /> Ver tutorial
+        </Button>
       </header>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
@@ -108,7 +113,7 @@ export function Home({ projects, onSelect }) {
       <div>
         <h2 className="mb-2 text-xs tracking-widest text-muted-foreground uppercase">Proyectos</h2>
         {!projects.length && (
-          <p className="text-muted-foreground">Aún no tienes proyectos. Crea uno con «Nuevo proyecto».</p>
+          <p className="text-muted-foreground">Aún no tienes proyectos. Crea uno con «Nuevo proyecto» o sigue el tutorial.</p>
         )}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
           {cards.map((c) => (

@@ -5,7 +5,8 @@ import { Home } from '@/components/Home'
 import { CommandPalette } from '@/components/CommandPalette'
 import { ExtensionView } from '@/components/ExtensionView'
 import { ExtensionsPage } from '@/components/ExtensionsPage'
-import { useExtensions, useProjects } from '@/lib/queries'
+import { Onboarding } from '@/components/Onboarding'
+import { useExtensions, useOnboardingPending, useProjects } from '@/lib/queries'
 
 const readSelected = () => {
   try {
@@ -22,6 +23,8 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(readSelected)
   const [searchOpen, setSearchOpen] = useState(false)
   const [newProjectOpen, setNewProjectOpen] = useState(false)
+  const { data: onboardingPending } = useOnboardingPending()
+  const [tutorialOpen, setTutorialOpen] = useState(false)
   const project = projects.find((p) => p.id === selectedId)
   const extViews = extensions
     .filter((e) => e.enabled)
@@ -37,6 +40,11 @@ export default function App() {
       /* sin almacenamiento: no pasa nada */
     }
   }, [selectedId])
+
+  // Primera ejecución: el tutorial se abre solo una vez.
+  useEffect(() => {
+    if (onboardingPending) setTutorialOpen(true)
+  }, [onboardingPending])
 
   return (
     <div className="grid h-screen grid-cols-[260px_1fr]">
@@ -57,7 +65,7 @@ export default function App() {
         ) : activeId === 'extensions' ? (
           <ExtensionsPage />
         ) : (
-          <Home projects={projects} onSelect={setSelectedId} />
+          <Home projects={projects} onSelect={setSelectedId} onTutorial={() => setTutorialOpen(true)} />
         )}
       </main>
       <CommandPalette
@@ -66,6 +74,12 @@ export default function App() {
         projects={projects}
         onSelect={setSelectedId}
         onNewProject={() => setNewProjectOpen(true)}
+      />
+      <Onboarding
+        open={tutorialOpen}
+        onOpenChange={setTutorialOpen}
+        projects={projects}
+        onSelect={setSelectedId}
       />
     </div>
   )

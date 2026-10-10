@@ -36,6 +36,9 @@ export const useWorktreeStatus = (wtPath, base, enabled) =>
     staleTime: 0
   })
 
+export const useOnboardingPending = () =>
+  useQuery({ queryKey: ['onboarding'], queryFn: api.onboarding.pending, staleTime: Infinity })
+
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
 
 export const useExtensions = () =>

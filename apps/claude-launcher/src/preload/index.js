@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('api', {
   openFolder: invoke('open:folder'),
   openWeb: invoke('open:web'),
   dashboard: invoke('dashboard'),
+  onboarding: {
+    pending: invoke('onboarding:pending'),
+    done: invoke('onboarding:done')
+  },
   vault: {
     status: invoke('vault:status'),
     create: invoke('vault:create'),

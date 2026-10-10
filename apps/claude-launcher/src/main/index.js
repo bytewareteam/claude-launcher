@@ -176,6 +176,12 @@ ipcMain.handle('open:web', async (_e, repoPath) =>
   shell.openExternal(await remoteWebUrl(repoPath))
 )
 
+// --- Tutorial -------------------------------------------------------------------
+
+// Quien actualiza con proyectos ya creados no necesita el tutorial de bienvenida.
+ipcMain.handle('onboarding:pending', () => !(store.get('onboardingDone') ?? projects().length > 0))
+ipcMain.handle('onboarding:done', () => store.set('onboardingDone', true))
+
 // --- Bóveda ---------------------------------------------------------------------
 
 ipcMain.handle('vault:status', () => vault.status(vaultPath()))
