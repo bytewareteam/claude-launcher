@@ -1,17 +1,32 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { FolderOpen, FolderSearch, Lock, LockOpen, RotateCcw, ShieldPlus } from 'lucide-react'
+import {
+  FolderOpen,
+  FolderSearch,
+  KeyRound,
+  Lock,
+  LockOpen,
+  Puzzle,
+  RotateCcw,
+  ShieldPlus,
+  Terminal
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ClaudeArgsInput } from '@/components/ClaudeArgsInput'
 import { ExtensionsPage } from '@/components/ExtensionsPage'
 import { useAskVault } from '@/components/VaultProvider'
 import { api } from '@/lib/api'
 import { useAction, useSettings, useVaultStatus } from '@/lib/queries'
+import { cn } from '@/lib/utils'
 
-const TABS = ['claude', 'vault', 'extensions']
+const SECTIONS = [
+  { id: 'claude', label: 'Claude', icon: Terminal },
+  { id: 'vault', label: 'Bóveda', icon: KeyRound },
+  { id: 'extensions', label: 'Extensiones', icon: Puzzle }
+]
+const TABS = SECTIONS.map((s) => s.id)
 
 const readTab = () => {
   try {
@@ -42,22 +57,29 @@ export function SettingsPage({ initialTab }) {
           Cómo se abre Claude, la bóveda de secretos y las extensiones instaladas.
         </p>
       </header>
-      <Tabs value={tab} onValueChange={changeTab}>
-        <TabsList>
-          <TabsTrigger value="claude">Claude</TabsTrigger>
-          <TabsTrigger value="vault">Bóveda</TabsTrigger>
-          <TabsTrigger value="extensions">Extensiones</TabsTrigger>
-        </TabsList>
-        <TabsContent value="claude" className="mt-4">
-          <ClaudeSettings />
-        </TabsContent>
-        <TabsContent value="vault" className="mt-4">
-          <VaultSettings />
-        </TabsContent>
-        <TabsContent value="extensions" className="mt-4">
-          <ExtensionsPage embedded />
-        </TabsContent>
-      </Tabs>
+      <div className="flex gap-6">
+        <nav className="flex w-44 shrink-0 flex-col gap-0.5" aria-label="Secciones de configuración">
+          {SECTIONS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => changeTab(id)}
+              aria-current={tab === id ? 'page' : undefined}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent',
+                tab === id && 'bg-accent font-medium shadow-[inset_3px_0_0_var(--primary)]'
+              )}
+            >
+              <Icon className="size-4" /> {label}
+            </button>
+          ))}
+        </nav>
+        <div className="min-w-0 flex-1">
+          {tab === 'claude' && <ClaudeSettings />}
+          {tab === 'vault' && <VaultSettings />}
+          {tab === 'extensions' && <ExtensionsPage embedded />}
+        </div>
+      </div>
     </section>
   )
 }
