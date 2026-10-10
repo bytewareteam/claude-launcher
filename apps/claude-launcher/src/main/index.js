@@ -6,7 +6,14 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import Store from 'electron-store'
 import dotenv from 'dotenv'
 import * as vault from './vault'
-import { repoRoot, listWorktrees, remoteBranches, worktreeStatus, removeWorktree, repoSummary } from './git'
+import {
+  repoRoot,
+  listWorktrees,
+  remoteBranches,
+  worktreeStatus,
+  removeWorktree,
+  repoSummary
+} from './git'
 import { openClaude } from './terminal'
 import * as extensions from './extensions'
 import icon from '../../resources/icon.png?asset'
@@ -86,7 +93,10 @@ ipcMain.handle('project:rename', (_e, id, name) =>
 )
 
 ipcMain.handle('project:remove', (_e, id) =>
-  store.set('projects', projects().filter((p) => p.id !== id))
+  store.set(
+    'projects',
+    projects().filter((p) => p.id !== id)
+  )
 )
 
 ipcMain.handle('repo:pick', async (e) => {
@@ -130,8 +140,12 @@ ipcMain.handle('repo:setBase', (_e, projectId, repoId, branch) =>
   })
 )
 
-ipcMain.handle('worktree:status', (_e, wtPath, base) => worktreeStatus(wtPath, base || DEFAULT_BASE_BRANCH))
-ipcMain.handle('worktree:remove', (_e, repoPath, wtPath, force) => removeWorktree(repoPath, wtPath, force))
+ipcMain.handle('worktree:status', (_e, wtPath, base) =>
+  worktreeStatus(wtPath, base || DEFAULT_BASE_BRANCH)
+)
+ipcMain.handle('worktree:remove', (_e, repoPath, wtPath, force) =>
+  removeWorktree(repoPath, wtPath, force)
+)
 
 ipcMain.handle('open:claude', (_e, dir, title, scope) => {
   let env = {}
@@ -164,7 +178,6 @@ ipcMain.handle('vault:status', () => vault.status(vaultPath()))
 ipcMain.handle('vault:create', (_e, password) => vault.create(vaultPath(), password))
 ipcMain.handle('vault:unlock', (_e, password) => vault.unlock(vaultPath(), password))
 ipcMain.handle('vault:lock', () => vault.lock())
-
 
 ipcMain.handle('vault:useExisting', async (e) => {
   const res = await dialog.showOpenDialog(windowOf(e), {
@@ -254,6 +267,20 @@ ipcMain.handle('ext:setEnabled', (_e, id, enabled) => extensions.setEnabled(id, 
 ipcMain.handle('ext:reload', () => extensions.scan())
 ipcMain.handle('ext:log', (_e, id) => extensions.logOf(id))
 ipcMain.handle('ext:openFolder', () => shell.openPath(extensions.userDir()))
+ipcMain.handle('ext:catalog', (_e, force) => extensions.catalog(force))
+ipcMain.handle('ext:install', (_e, name) => extensions.installFromCatalog(name))
+ipcMain.handle('ext:uninstall', (_e, id) => extensions.uninstall(id))
+ipcMain.handle('ext:pickZip', async (e) => {
+  const res = await dialog.showOpenDialog(windowOf(e), {
+    title: 'Instalar extensión desde .zip',
+    filters: [{ name: 'Extensión', extensions: ['zip'] }],
+    properties: ['openFile']
+  })
+  if (res.canceled || !res.filePaths[0]) return null
+  return extensions.stageZip(res.filePaths[0])
+})
+ipcMain.handle('ext:installStaged', (_e, token) => extensions.installStaged(token))
+ipcMain.handle('ext:discardStaged', (_e, token) => extensions.discardStaged(token))
 ipcMain.handle('ext:render', (_e, id, viewId) => extensions.render(id, viewId))
 ipcMain.handle('ext:action', (_e, id, viewId, actionId, args) =>
   extensions.action(id, viewId, actionId, args)

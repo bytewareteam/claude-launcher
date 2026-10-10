@@ -1,11 +1,28 @@
 # Extensiones de Claude Launcher
 
-Una extensión es una carpeta con un `package.json` y un archivo JS (CommonJS). Se cargan de:
+Una extensión es una carpeta con un `package.json` y un archivo JS (CommonJS). La app no trae
+ninguna: el usuario las instala desde la pantalla *Extensiones*.
 
-- `apps/claude-launcher/extensions/` — las que trae la app (activas por defecto).
-- `%APPDATA%/claude-launcher/extensions/` — las del usuario (hay que activarlas y aceptar sus permisos).
+- **Disponibles**: catálogo publicado en
+  `https://bytewareteam.github.io/claude-launcher/extensions.json`. Instalar descarga el `.zip`,
+  comprueba su sha256 y que pide los mismos permisos que muestra el catálogo.
+- **Instalar desde .zip**: cualquier paquete con `package.json` en la raíz (o en una única carpeta).
+- Todas se instalan en `%APPDATA%/claude-launcher/extensions/<name>/` y solo se activan tras aceptar
+  sus permisos. Si una actualización cambia los permisos, vuelve a pedirlos.
+- En desarrollo (`npm run dev`) la app también carga las de esta carpeta, marcadas como
+  *desarrollo*. Tras editarlas, pulsa **Recargar**.
 
-Tras copiar o editar una extensión, pulsa **Recargar** en la pantalla *Extensiones*.
+## Publicar una extensión
+
+Cada carpeta de `extensions/` es un proyecto Nx (`ext-<name>`) con versión propia:
+
+1. Commits con Conventional Commits que toquen solo esa carpeta (`feat(azure-devops): …`).
+2. En el push a `main`, `nx release` sube su versión, escribe su `CHANGELOG.md` y crea el tag
+   `ext-<name>-vX.Y.Z` con su release en GitHub; el workflow adjunta el `.zip`.
+3. El workflow *Pages* regenera `extensions.json` a partir de los `.zip` publicados.
+
+Para generar el `.zip` en local: `npx nx run ext-<name>:package` (queda en `dist/`). Para probar un
+catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a extensions.json>`.
 
 ## Modelo de seguridad
 

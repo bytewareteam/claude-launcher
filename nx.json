@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "useDaemonProcess": false,
+  "analytics": false,
   "targetDefaults": {
     "build": {
       "dependsOn": ["^build"],
@@ -13,22 +14,41 @@
     }
   },
   "release": {
-    "projects": ["claude-launcher"],
-    "releaseTag": {
-      "pattern": "v{version}"
-    },
     "version": {
       "conventionalCommits": true,
       "adjustSemverBumpsForZeroMajorVersion": false
     },
     "changelog": {
-      "workspaceChangelog": {
-        "createRelease": "github",
-        "file": "{workspaceRoot}/CHANGELOG.md"
+      "automaticFromRef": true
+    },
+    "groups": {
+      "app": {
+        "projects": ["claude-launcher"],
+        "releaseTag": {
+          "pattern": "v{version}"
+        },
+        "changelog": {
+          "file": "{workspaceRoot}/CHANGELOG.md",
+          "createRelease": "github"
+        }
+      },
+      "extensions": {
+        "projects": ["ext-*"],
+        "projectsRelationship": "independent",
+        "releaseTag": {
+          "pattern": "{projectName}-v{version}"
+        },
+        "version": {
+          "fallbackCurrentVersionResolver": "disk"
+        },
+        "changelog": {
+          "file": "{projectRoot}/CHANGELOG.md",
+          "createRelease": "github"
+        }
       }
     },
     "git": {
-      "commitMessage": "chore(release): v{version} [skip ci]"
+      "commitMessage": "chore(release): publicar versiones [skip ci]"
     }
   }
 }

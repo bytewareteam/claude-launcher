@@ -41,6 +41,14 @@ export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: a
 export const useExtensions = () =>
   useQuery({ queryKey: ['extensions'], queryFn: api.extensions.list })
 
+// El proceso principal cachea el catálogo; sin red, la pestaña «Disponibles» muestra el error.
+export const useExtensionCatalog = () =>
+  useQuery({
+    queryKey: ['ext-catalog'],
+    queryFn: () => api.extensions.catalog(false),
+    retry: false
+  })
+
 // Vista declarativa de una extensión: la pinta ExtensionView con los componentes de la app.
 export const useExtensionView = (extId, viewId) =>
   useQuery({

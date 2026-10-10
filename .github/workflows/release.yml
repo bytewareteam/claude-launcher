@@ -1,6 +1,8 @@
 # En cada push a main, Nx Release decide la versión a partir de los Conventional Commits
-# (feat → minor, fix → patch, BREAKING CHANGE → major). Si hay versión nueva: commit
-# "chore(release)", tag vX.Y.Z, CHANGELOG.md, release en GitHub y se adjunta el portable.
+# (feat → minor, fix → patch, BREAKING CHANGE → major), por separado para la app y para cada
+# extensión de extensions/. Si hay versión nueva: commit "chore(release)", tags, CHANGELOG.md,
+# release en GitHub y se adjunta el portable (tag vX.Y.Z) o el .zip de la extensión
+# (tag ext-<nombre>-vX.Y.Z). Al terminar, el workflow Pages regenera el catálogo.
 name: Release
 
 on:
@@ -64,3 +66,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ steps.tag.outputs.tag }}" apps/claude-launcher/dist/*-portable.exe --clobber
+
+      - name: Empaquetar y adjuntar extensiones publicadas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for tag in $(git tag --points-at HEAD --list 'ext-*'); do
+            project="${tag%-v*}"
+            npx nx run "$project:package"
+            gh release upload "$tag" "extensions/${project#ext-}/dist/"*.zip --clobber
+            # Las releases de extensiones no deben quitarle a la app el «Latest» de GitHub.
+            gh release edit "$tag" --latest=false
+          done
+
+      - name: Mantener la app como última release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          app=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [ -n "$app" ]; then gh release edit "$app" --latest; fi

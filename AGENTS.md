@@ -18,6 +18,7 @@ Monorepo con **Nx** + **npm workspaces**. Instala siempre desde la raíz.
 ```
 apps/claude-launcher/   La app Electron (proyecto Nx `claude-launcher`).
 apps/web/               Página web en Astro + Tailwind v4 (proyecto Nx `web`), publicada en GitHub Pages.
+extensions/             Extensiones de la app, una por carpeta (proyectos Nx `ext-<nombre>`, versión propia).
 packages/               Librerías compartidas.
   design-tokens/        `@claude-launcher/design-tokens`: colores, radios, fuentes y logo comunes a app y web (fuente: `tokens.js`; `build` genera los .css).
 nx.json                 Targets por defecto y configuración de Nx Release.
@@ -33,6 +34,7 @@ npm run dev                              # app en modo desarrollo (HMR en el ren
 npm run build                            # compila todos los proyectos
 npx nx run claude-launcher:package       # .exe portable en apps/claude-launcher/dist/
 npx nx run claude-launcher:package:all   # instalador NSIS + portable
+npx nx run ext-<nombre>:package          # .zip de una extensión en extensions/<nombre>/dist/
 npx nx release --skip-publish --dry-run  # simula la próxima release
 npx nx run web:dev                       # web en local (http://localhost:4321/claude-launcher/)
 ```
@@ -52,7 +54,12 @@ Los commits siguen **[Conventional Commits](https://www.conventionalcommits.org/
 | `feat!: …` o `BREAKING CHANGE:` en el cuerpo | major (0.2.0 → 1.0.0) |
 | `chore:`, `docs:`, `refactor:`, `build:`, `ci:`… | sin release |
 
-En cada push a `main`, `.github/workflows/release.yml` ejecuta `nx release`: sube la versión de `apps/claude-launcher/package.json`, actualiza `CHANGELOG.md`, crea el tag `vX.Y.Z` y la release de GitHub con el `.exe` portable adjunto. No edites la versión ni el changelog a mano.
+En cada push a `main`, `.github/workflows/release.yml` ejecuta `nx release` con dos grupos (`nx.json`):
+
+- **app**: sube la versión de `apps/claude-launcher/package.json`, actualiza `CHANGELOG.md`, crea el tag `vX.Y.Z` y la release de GitHub con el `.exe` portable adjunto.
+- **extensions** (independiente): cada `extensions/<nombre>` con commits nuevos sube su versión y su `CHANGELOG.md`, y crea el tag `ext-<nombre>-vX.Y.Z` con el `.zip` adjunto. La app sigue siendo la release *Latest*.
+
+Después, `.github/workflows/pages.yml` regenera el catálogo `extensions.json` que lee la app. Usa un scope en los commits de extensiones (`feat(github): …`). No edites versiones ni changelogs a mano.
 
 ## Web (`apps/web`)
 
@@ -72,13 +79,13 @@ src/
     git.js       Wrappers de `git` (worktrees, ramas remotas, estado).
     vault.js     Bóveda KeePass (kdbxweb + Argon2 vía hash-wasm). Autobloqueo a los 15 min.
     terminal.js  Lanza `wt.exe … claude` con un entorno filtrado.
-    extensions.js       Descubre extensiones, guarda su consentimiento y las arranca.
+    extensions.js       Instala/desinstala extensiones, guarda su consentimiento y las arranca.
+    extension-packages.js  Catálogo remoto, descarga verificada (sha256) y extracción segura de .zip.
     extension-host.js   Corre dentro del utilityProcess de cada extensión (entrada aparte de Vite).
   preload/     Expone `window.api` (contextBridge) → un `ipcRenderer.invoke` por canal.
   renderer/    React 19 + Tailwind v4 + shadcn/ui (estilo new-york, JSX).
     src/lib/queries.js   Hooks de TanStack Query sobre `window.api`.
     src/components/ui/   Componentes shadcn generados: no editarlos a mano salvo necesidad.
-extensions/    Extensiones incluidas (p. ej. `github/`). Guía para escribirlas: `extensions/README.md`.
 ```
 
 Flujo de datos: componente → hook de `queries.js` → `window.api.*` → `ipcMain.handle(...)` en `main/index.js`.
@@ -97,6 +104,9 @@ Lo que pueden pedir a la app está en `hostApi` (`src/main/index.js`) y sus perm
 `METHOD_PERMISSION` (`src/main/extensions.js`). Para ampliar la API: añade el método a `hostApi`,
 su permiso si toca, la función en `ctx` (`extension-host.js`) y documéntalo en `extensions/README.md`.
 Nunca expongas la bóveda a las extensiones.
+
+La app no trae extensiones: se instalan del catálogo o de un `.zip` (ver `extensions/README.md`) y
+solo se activan tras aceptar sus permisos. En desarrollo carga también las de `extensions/`.
 
 ## Convenciones
 

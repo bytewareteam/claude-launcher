@@ -1,10 +1,16 @@
 {
   "name": "github",
   "displayName": "GitHub",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Lista tus repositorios de GitHub (vía GitHub CLI) y clónalos donde quieras.",
   "main": "index.js",
   "private": true,
+  "scripts": {
+    "package": "node ../../scripts/extensions.mjs pack ."
+  },
+  "nx": {
+    "name": "ext-github"
+  },
   "claudeLauncher": {
     "apiVersion": 1,
     "permissions": {

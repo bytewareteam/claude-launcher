@@ -1,4 +1,5 @@
-# Publica apps/web (Astro) en GitHub Pages cuando cambian la web o los design tokens.
+# Publica apps/web (Astro) en GitHub Pages cuando cambian la web o los design tokens, y tras
+# cada Release para regenerar el catálogo de extensiones (extensions.json).
 # Requiere Settings → Pages → Source: "GitHub Actions".
 name: Pages
 
@@ -9,6 +10,9 @@ on:
       - apps/web/**
       - packages/design-tokens/**
       - .github/workflows/pages.yml
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +30,7 @@ env:
 
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -41,6 +46,9 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       - run: npx nx run web:build
+
+      # Índice de la última versión publicada de cada extensión: lo lee la app.
+      - run: node scripts/extensions.mjs catalog apps/web/dist/extensions.json
 
       - uses: actions/upload-pages-artifact@v5
         with:

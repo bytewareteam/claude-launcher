@@ -1,9 +1,11 @@
-// Gestor de extensiones: las descubre, guarda qué permisos aceptó el usuario y arranca
+// Gestor de extensiones: las instala, guarda qué permisos aceptó el usuario y arranca
 // cada una en su propio utilityProcess (ver extension-host.js).
 import { app, utilityProcess } from 'electron'
+import { randomUUID } from 'crypto'
 import { join, resolve, sep } from 'path'
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'fs'
 import { baseEnv } from './terminal'
+import * as packages from './extension-packages'
 
 export const API_VERSION = 1
 const CALL_TIMEOUT = 10 * 60_000
@@ -16,9 +18,11 @@ const METHOD_PERMISSION = {
   'ui.pickFolder': 'dialogs'
 }
 
-export const builtinDir = () =>
-  app.isPackaged ? join(process.resourcesPath, 'extensions') : join(app.getAppPath(), 'extensions')
+// La app no trae extensiones: se instalan del catálogo o de un .zip en userDir. En desarrollo
+// también se cargan las de extensions/ del repo, para probarlas sin empaquetar.
+const devDir = () => (app.isPackaged ? null : resolve(app.getAppPath(), '..', '..', 'extensions'))
 export const userDir = () => join(app.getPath('userData'), 'extensions')
+const stagingDir = () => join(app.getPath('userData'), 'extensions-staging')
 
 let store
 let hostApi
@@ -30,10 +34,19 @@ export function initExtensions(options) {
   store = options.store
   hostApi = options.hostApi
   mkdirSync(userDir(), { recursive: true })
+  rmSync(stagingDir(), { recursive: true, force: true })
   scan()
 }
 
-function readManifest(dir, builtin) {
+function normalizePermissions(perms = {}) {
+  return {
+    exec: Array.isArray(perms.exec) ? perms.exec.map(String) : [],
+    projects: !!perms.projects,
+    dialogs: !!perms.dialogs
+  }
+}
+
+function readManifest(dir, source) {
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
   const cl = pkg.claudeLauncher
   if (!cl) throw new Error('package.json sin el campo «claudeLauncher».')
@@ -43,7 +56,6 @@ function readManifest(dir, builtin) {
     throw new Error(`apiVersion ${cl.apiVersion} no soportada (esta app usa ${API_VERSION}).`)
   const entry = resolve(dir, pkg.main || 'index.js')
   if (!entry.startsWith(resolve(dir) + sep)) throw new Error('«main» apunta fuera de la extensión.')
-  const perms = cl.permissions || {}
   return {
     id: pkg.name,
     displayName: pkg.displayName || pkg.name,
@@ -51,36 +63,36 @@ function readManifest(dir, builtin) {
     description: pkg.description || '',
     entry,
     dir,
-    builtin,
-    permissions: {
-      exec: Array.isArray(perms.exec) ? perms.exec.map(String) : [],
-      projects: !!perms.projects,
-      dialogs: !!perms.dialogs
-    },
-    views: (cl.views || []).map((v) => ({ id: String(v.id), title: String(v.title || v.id), icon: v.icon }))
+    source,
+    permissions: normalizePermissions(cl.permissions),
+    views: (cl.views || []).map((v) => ({
+      id: String(v.id),
+      title: String(v.title || v.id),
+      icon: v.icon
+    }))
   }
 }
 
-// Descubre extensiones de la app y del usuario. Para recoger cambios en desarrollo, detiene
-// los procesos en marcha: se vuelven a arrancar en la siguiente petición.
+// Descubre las extensiones instaladas (y las del repo en desarrollo). Para recoger cambios,
+// detiene los procesos en marcha: se vuelven a arrancar en la siguiente petición.
 export function scan() {
   for (const ext of extensions.values()) stop(ext)
   extensions.clear()
-  for (const [root, builtin] of [
-    [builtinDir(), true],
-    [userDir(), false]
+  for (const [root, source] of [
+    [devDir(), 'dev'],
+    [userDir(), 'user']
   ]) {
-    if (!existsSync(root)) continue
+    if (!root || !existsSync(root)) continue
     for (const d of readdirSync(root, { withFileTypes: true })) {
-      if (!d.isDirectory()) continue
+      if (!d.isDirectory() || !existsSync(join(root, d.name, 'package.json'))) continue
       const dir = join(root, d.name)
       let ext
       try {
-        ext = { ...readManifest(dir, builtin), log: [] }
+        ext = { ...readManifest(dir, source), log: [] }
       } catch (err) {
-        const id = `${builtin ? 'app' : 'user'}:${d.name}`
-        ext = { id, displayName: d.name, dir, builtin, invalid: err.message, views: [], log: [] }
-        ext.permissions = { exec: [] }
+        const id = `${source}:${d.name}`
+        ext = { id, displayName: d.name, dir, source, invalid: err.message, views: [], log: [] }
+        ext.permissions = normalizePermissions()
       }
       if (extensions.has(ext.id))
         ext = { ...ext, id: `user:${ext.id}`, invalid: 'Ya hay otra extensión con ese nombre.' }
@@ -94,17 +106,22 @@ export function scan() {
 const states = () => store.get('extensions', {})
 const grantKey = (ext) => JSON.stringify(ext.permissions)
 
-// Las de la app vienen activas; las del usuario necesitan aceptar sus permisos, y vuelven
-// a pedirlo si una actualización cambia los permisos.
-function isEnabled(ext) {
-  if (ext.invalid) return false
-  const s = states()[ext.id] || {}
-  return ext.builtin ? s.enabled !== false : !!s.enabled && s.grant === grantKey(ext)
+// Solo corre si el usuario aceptó exactamente los permisos que pide ahora: si una
+// actualización los cambia, vuelve a pedir consentimiento.
+const isGranted = (ext) => !ext.invalid && states()[ext.id]?.grant === grantKey(ext)
+const isEnabled = (ext) => isGranted(ext) && !!states()[ext.id]?.enabled
+
+function setState(id, patch) {
+  const all = states()
+  if (patch === null) delete all[id]
+  else all[id] = { ...all[id], ...patch }
+  store.set('extensions', all)
 }
 
+// Activar implica aceptar los permisos actuales; desactivar conserva el consentimiento.
 export function setEnabled(id, enabled) {
   const ext = get(id)
-  store.set('extensions', { ...states(), [id]: { enabled, grant: enabled ? grantKey(ext) : null } })
+  setState(id, enabled ? { enabled, grant: grantKey(ext) } : { enabled })
   if (!enabled) stop(ext)
 }
 
@@ -114,18 +131,125 @@ export function list() {
     displayName: ext.displayName,
     version: ext.version,
     description: ext.description,
-    builtin: ext.builtin,
+    source: ext.source,
     dir: ext.dir,
     invalid: ext.invalid || null,
     permissions: ext.permissions,
     views: ext.views,
     enabled: isEnabled(ext),
+    granted: isGranted(ext),
     running: !!ext.proc,
     error: ext.error || null
   }))
 }
 
 export const logOf = (id) => get(id).log.join('')
+
+// --- Instalación ------------------------------------------------------------------
+
+// Catálogo con el estado local de cada entrada.
+export async function catalog(force) {
+  const entries = await packages.fetchCatalog(force)
+  return entries.map((e) => {
+    const installed = extensions.get(e.name)
+    return {
+      ...e,
+      permissions: normalizePermissions(e.permissions),
+      compatible: e.apiVersion === API_VERSION,
+      installedVersion: installed?.version ?? null,
+      update: !!installed && packages.compareVersions(e.version, installed.version) > 0
+    }
+  })
+}
+
+// Paquetes extraídos que esperan a que el usuario acepte sus permisos.
+const staged = new Map()
+
+function stage(zip) {
+  const token = randomUUID()
+  const dir = join(stagingDir(), token)
+  try {
+    packages.extract(zip, dir)
+    const manifest = readManifest(dir, 'user')
+    staged.set(token, manifest)
+    return { token, manifest }
+  } catch (err) {
+    rmSync(dir, { recursive: true, force: true })
+    throw err
+  }
+}
+
+function discard(token) {
+  staged.delete(token)
+  rmSync(join(stagingDir(), token), { recursive: true, force: true })
+}
+
+// Mueve el paquete a userDir (sustituyendo la versión anterior) y lo activa con los
+// permisos que el usuario acaba de aceptar.
+function commit(token) {
+  const manifest = staged.get(token)
+  if (!manifest) throw new Error('La instalación ha caducado. Vuelve a intentarlo.')
+  const current = extensions.get(manifest.id)
+  if (current && current.source !== 'user') {
+    discard(token)
+    throw new Error(`Ya hay una extensión de desarrollo llamada «${manifest.id}».`)
+  }
+  staged.delete(token)
+  if (current) stop(current)
+  const dest = join(userDir(), manifest.id)
+  rmSync(dest, { recursive: true, force: true, maxRetries: 5 })
+  renameSync(manifest.dir, dest)
+  setState(manifest.id, { enabled: true, grant: grantKey(manifest) })
+  scan()
+  return { id: manifest.id, displayName: manifest.displayName, version: manifest.version }
+}
+
+// El renderer ya ha mostrado los permisos del catálogo; si el paquete pide otros, no se instala.
+export async function installFromCatalog(name) {
+  const entry = (await catalog(true)).find((e) => e.name === name)
+  if (!entry) throw new Error(`«${name}» no está en el catálogo.`)
+  if (!entry.compatible) throw new Error(`«${entry.displayName}» necesita otra versión de la app.`)
+  const { token, manifest } = stage(await packages.download(entry))
+  if (
+    manifest.id !== entry.name ||
+    manifest.version !== entry.version ||
+    grantKey(manifest) !== grantKey(entry)
+  ) {
+    discard(token)
+    throw new Error(`El paquete de «${entry.displayName}» no coincide con el catálogo.`)
+  }
+  return commit(token)
+}
+
+// Instalar desde un .zip va en dos pasos: el usuario ve los permisos antes de confirmar.
+export function stageZip(path) {
+  const { token, manifest } = stage(packages.readZip(path))
+  return {
+    token,
+    id: manifest.id,
+    displayName: manifest.displayName,
+    version: manifest.version,
+    description: manifest.description,
+    permissions: manifest.permissions,
+    installedVersion: extensions.get(manifest.id)?.version ?? null
+  }
+}
+
+export const installStaged = (token) => commit(token)
+export const discardStaged = (token) => discard(token)
+
+export function uninstall(id) {
+  const ext = get(id)
+  if (ext.source !== 'user')
+    throw new Error('Solo se pueden desinstalar las extensiones instaladas.')
+  stop(ext)
+  rmSync(ext.dir, { recursive: true, force: true, maxRetries: 5 })
+  setState(id, null)
+  const data = store.get('extensionData', {})
+  delete data[id]
+  store.set('extensionData', data)
+  scan()
+}
 
 function get(id) {
   const ext = extensions.get(id)
