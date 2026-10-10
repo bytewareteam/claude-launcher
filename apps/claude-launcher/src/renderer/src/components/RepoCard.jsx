@@ -1,4 +1,4 @@
-import { ChevronRight, Ellipsis, Folder, Globe, Terminal, X } from 'lucide-react'
+import { ChevronRight, Ellipsis, Folder, Globe, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -13,6 +13,7 @@ import { IdeButton, IdeSubmenu } from '@/components/IdeButton'
 import { ShellButton } from '@/components/ShellButton'
 import { WorktreeSection } from '@/components/WorktreeSection'
 import { api } from '@/lib/api'
+import { ClaudeIcon } from '@/lib/brandIcons'
 import { useAction, useWorktrees } from '@/lib/queries'
 import { useLaunch } from '@/lib/useLaunch'
 import { useRememberedOpen } from '@/lib/useRememberedOpen'
@@ -49,7 +50,7 @@ export function RepoCard({ project, repo }) {
           </CollapsibleTrigger>
           <div className="flex shrink-0 items-center gap-0.5">
             <Button size="sm" className="mr-1" onClick={() => launch(repo.path, repo.name, scope)}>
-              <Terminal /> Claude
+              <ClaudeIcon /> Claude
             </Button>
             <ShellButton dir={repo.path} title={repo.name} />
             <IdeButton dir={repo.path} />

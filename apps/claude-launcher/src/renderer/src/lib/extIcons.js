@@ -22,18 +22,22 @@ import {
   User,
   Users
 } from 'lucide-react'
+import { ClaudeIcon, GithubIcon, MicrosoftAzure } from './brandIcons'
 
 // Iconos que pueden usar las extensiones por nombre. Lista cerrada: así no se empaqueta
 // todo lucide. Si una extensión necesita otro, añádelo aquí y documéntalo.
 const ICONS = {
   'arrow-left': ArrowLeft,
+  azure: MicrosoftAzure,
   bug: Bug,
   calendar: Calendar,
+  claude: ClaudeIcon,
   cloud: Cloud,
   download: Download,
   'external-link': ExternalLink,
   folder: Folder,
   'git-branch': GitBranch,
+  github: GithubIcon,
   globe: Globe,
   kanban: SquareKanban,
   layers: Layers,

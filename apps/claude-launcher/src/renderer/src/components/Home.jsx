@@ -1,5 +1,6 @@
-import { AlertTriangle, Clock, FolderGit2, GitBranch, GraduationCap, Terminal } from 'lucide-react'
+import { AlertTriangle, Clock, FolderGit2, GitBranch, GraduationCap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ClaudeIcon } from '@/lib/brandIcons'
 import { useDashboard } from '@/lib/queries'
 import { plural, timeAgo } from '@/lib/format'
 import { useLaunch } from '@/lib/useLaunch'
@@ -102,7 +103,7 @@ export function Home({ projects, onSelect, onTutorial }) {
                     launch(l.dir, l.title, l.projectId && projectName(l.projectId) ? { projectId: l.projectId, repoId: l.repoId } : undefined)
                   }
                 >
-                  <Terminal /> Reabrir
+                  <ClaudeIcon /> Reabrir
                 </Button>
               </li>
             ))}
@@ -150,7 +151,7 @@ export function Home({ projects, onSelect, onTutorial }) {
                   <Clock className="size-3.5" /> Último commit: {timeAgo(c.lastCommit) ?? '—'}
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <Terminal className="size-3.5" /> Última sesión: {timeAgo(c.lastLaunch) ?? 'nunca'}
+                  <ClaudeIcon className="size-3.5" /> Última sesión: {timeAgo(c.lastLaunch) ?? 'nunca'}
                 </span>
               </div>
             </button>

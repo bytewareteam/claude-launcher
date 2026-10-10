@@ -9,7 +9,9 @@ import {
   DropdownMenuSubTrigger
 } from '@/components/ui/dropdown-menu'
 import { api } from '@/lib/api'
+import { ideIcon } from '@/lib/brandIcons'
 import { useAction, useIdes } from '@/lib/queries'
+import { cn } from '@/lib/utils'
 
 // Abre `dir` en el IDE elegido; pasar `id` lo deja como predeterminado.
 function useOpenIde(dir) {
@@ -26,6 +28,7 @@ export function IdeButton({ dir, size = 'icon-sm' }) {
   const { data } = useIdes()
   const open = useOpenIde(dir)
   const ide = currentIde(data)
+  const Icon = ideIcon(ide?.id)
 
   return (
     <Button
@@ -35,7 +38,7 @@ export function IdeButton({ dir, size = 'icon-sm' }) {
       title={ide ? `Abrir en ${ide.name}` : 'No se ha encontrado ningún IDE'}
       onClick={() => open.mutate()}
     >
-      <Code />
+      <Icon />
     </Button>
   )
 }
@@ -54,11 +57,15 @@ export function IdeSubmenu({ dir }) {
           <Code /> Abrir con…
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
-          {data.ides.map((i) => (
-            <DropdownMenuItem key={i.id} onSelect={() => open.mutate(i.id)}>
-              <Check className={i.id === ide?.id ? '' : 'invisible'} /> {i.name}
-            </DropdownMenuItem>
-          ))}
+          {data.ides.map((i) => {
+            const Icon = ideIcon(i.id)
+            return (
+              <DropdownMenuItem key={i.id} onSelect={() => open.mutate(i.id)}>
+                <Icon /> {i.name}
+                <Check className={cn('ml-auto', i.id !== ide?.id && 'invisible')} />
+              </DropdownMenuItem>
+            )
+          })}
         </DropdownMenuSubContent>
       </DropdownMenuSub>
       <DropdownMenuSeparator />

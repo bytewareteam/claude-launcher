@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, Folder, GitCommit, LoaderCircle, Terminal, Trash2 } from 'lucide-react'
+import { AlertTriangle, Folder, GitCommit, LoaderCircle, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import { BranchCombobox } from '@/components/BranchCombobox'
 import { IdeButton } from '@/components/IdeButton'
 import { ShellButton } from '@/components/ShellButton'
 import { api, errMsg } from '@/lib/api'
+import { ClaudeIcon } from '@/lib/brandIcons'
 import { useAction, useWorktrees, useWorktreeStatus } from '@/lib/queries'
 import { plural } from '@/lib/format'
 
@@ -98,7 +99,7 @@ function WorktreeRow({ repo, wt, base, onLaunch }) {
       {!wt.bare && (
         <div className="flex shrink-0 items-center gap-0.5">
           <Button size="sm" variant="outline" className="mr-1 h-7" onClick={onLaunch}>
-            <Terminal /> Claude
+            <ClaudeIcon /> Claude
           </Button>
           <ShellButton dir={wt.path} title={`${repo.name}:${label}`} />
           <IdeButton dir={wt.path} />
