@@ -54,6 +54,17 @@ Los commits siguen **[Conventional Commits](https://www.conventionalcommits.org/
 | `feat!: …` o `BREAKING CHANGE:` en el cuerpo | major (0.2.0 → 1.0.0) |
 | `chore:`, `docs:`, `refactor:`, `build:`, `ci:`… | sin release |
 
+### Flujo de ramas
+
+`main` solo contiene versiones publicadas: cada merge a `main` es una release. No hagas push ni PRs de features directos a `main`.
+
+1. Planifica la versión: crea `release/<major>.<minor>` desde `main` (`git switch -c release/1.5 main && git push -u origin release/1.5`).
+2. Cada característica en su rama (`feat/…`, `fix/…`) desde `release/1.5` → PR a `release/1.5`. Aquí sí vale squash, con un título en Conventional Commits.
+3. Cuando sea estable, PR `release/1.5` → `main` con **merge commit**, nunca squash: Nx calcula la versión y el changelog a partir de cada commit; un squash los reduce a uno.
+4. La siguiente rama de release se crea desde `main` actualizado, que ya lleva el commit `chore(release)` y los tags.
+
+Antes del PR a `main`, comprueba qué saldría desde la rama de release: `npx nx release --skip-publish --dry-run`.
+
 En cada push a `main`, `.github/workflows/release.yml` ejecuta `nx release` con dos grupos (`nx.json`):
 
 - **app**: sube la versión de `apps/claude-launcher/package.json`, actualiza `CHANGELOG.md`, crea el tag `vX.Y.Z` y la release de GitHub con el `.exe` portable adjunto.

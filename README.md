@@ -43,7 +43,7 @@ Se genera en `apps/claude-launcher/dist/`.
 
 ## Descargas y versiones
 
-Cada versión publicada está en [Releases](https://github.com/bytewareteam/claude-launcher/releases) con el `.exe` portable (no requiere instalación). Las versiones siguen [semver](https://semver.org/lang/es/) y se publican solas a partir de los mensajes de commit; los cambios están en [CHANGELOG.md](CHANGELOG.md).
+Cada versión publicada está en [Releases](https://github.com/bytewareteam/claude-launcher/releases) con el `.exe` portable (no requiere instalación). Las versiones siguen [semver](https://semver.org/lang/es/) y se publican al integrar una rama `release/*` en `main`, con la versión calculada a partir de los mensajes de commit; los cambios están en [CHANGELOG.md](CHANGELOG.md).
 
 ## Seguridad
 
