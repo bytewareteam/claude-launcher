@@ -12,7 +12,8 @@ import {
   remoteBranches,
   worktreeStatus,
   removeWorktree,
-  repoSummary
+  repoSummary,
+  remoteWebUrl
 } from './git'
 import { openClaude } from './terminal'
 import * as extensions from './extensions'
@@ -171,6 +172,9 @@ ipcMain.handle('dashboard', async () => {
 })
 
 ipcMain.handle('open:folder', (_e, dir) => shell.openPath(dir))
+ipcMain.handle('open:web', async (_e, repoPath) =>
+  shell.openExternal(await remoteWebUrl(repoPath))
+)
 
 // --- Bóveda ---------------------------------------------------------------------
 

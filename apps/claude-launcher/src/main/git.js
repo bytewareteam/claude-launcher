@@ -52,6 +52,28 @@ export async function remoteBranches(repoPath) {
     .sort()
 }
 
+// URL web del remoto (origin o, si no existe, el primero) a partir de su URL https o ssh.
+export async function remoteWebUrl(repoPath) {
+  const remotes = (await git(['remote'], repoPath)).split(/\r?\n/).filter(Boolean)
+  const remote = remotes.includes('origin') ? 'origin' : remotes[0]
+  if (!remote) throw new Error('El repositorio no tiene remotos configurados.')
+  const url = (await git(['remote', 'get-url', remote], repoPath)).trim()
+  // git@host:org/repo.git · ssh://git@host[:puerto]/org/repo.git · https://user@host/org/repo.git
+  const m =
+    url.match(/^[\w.-]+@([^:/]+):(.+)$/) ||
+    url.match(/^ssh:\/\/(?:[^@/]+@)?([^:/]+)(?::\d+)?\/(.+)$/) ||
+    url.match(/^https?:\/\/(?:[^@/]+@)?([^/]+)\/(.+)$/)
+  if (!m) throw new Error(`No se reconoce la URL del remoto: ${url}`)
+  let [, host, path] = m
+  path = path.replace(/\.git\/?$/, '').replace(/\/$/, '')
+  // Azure DevOps por ssh: ssh.dev.azure.com:v3/org/proyecto/repo → dev.azure.com/org/proyecto/_git/repo
+  if (host === 'ssh.dev.azure.com' && path.startsWith('v3/')) {
+    const [org, project, repo] = path.slice(3).split('/')
+    return `https://dev.azure.com/${org}/${project}/_git/${repo}`
+  }
+  return `https://${host}/${path}`
+}
+
 // Qué se perdería al borrar un worktree: cambios sin commitear y commits que no están en la rama base.
 export async function worktreeStatus(wtPath, base) {
   if (!existsSync(wtPath)) return { missing: true }
