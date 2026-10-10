@@ -121,8 +121,9 @@ const handlers = {
     deactivate = ext.deactivate
     await ext.activate?.(ctx)
   },
-  render: (viewId) => view(viewId).render(),
-  action: (viewId, actionId, args) => view(viewId).action?.(actionId, args),
+  render: (viewId, context) => view(viewId).render(context ?? {}),
+  action: (viewId, actionId, args, context) =>
+    view(viewId).action?.(actionId, args, context ?? {}),
   async deactivate() {
     await deactivate?.()
     views = new Map()

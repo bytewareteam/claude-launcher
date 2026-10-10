@@ -19,6 +19,10 @@ export const tokens = {
     accent: 'oklch(0.27 0.008 265)',
     'accent-foreground': 'oklch(0.94 0.003 265)',
     destructive: 'oklch(0.65 0.2 25)',
+    // Estados (p. ej. paneles de extensiones): completado, en riesgo, en curso.
+    success: 'oklch(0.72 0.15 150)',
+    warning: 'oklch(0.8 0.14 85)',
+    info: 'oklch(0.7 0.12 240)',
     border: 'oklch(1 0 0 / 10%)',
     input: 'oklch(1 0 0 / 14%)',
     ring: 'oklch(0.68 0.13 40)',

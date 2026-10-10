@@ -1,8 +1,8 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 /* Colores, radios, fuentes y variante dark compartidos con la web. */
-@import "@claude-launcher/design-tokens/theme.css";
+@import '@claude-launcher/design-tokens/theme.css';
 
 @layer base {
   * {
@@ -10,5 +10,68 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+/* HTML saneado de las extensiones (SafeHtml): estilos propios, sin los del origen. */
+@layer components {
+  .ext-html {
+    @apply text-sm leading-relaxed break-words;
+    /* Azure DevOps usa un <div> por línea: solo se separan los bloques «de verdad». */
+    & > :is(p, ul, ol, table, pre, blockquote, h1, h2, h3, h4, h5, h6, hr):not(:first-child) {
+      @apply mt-2;
+    }
+    & h1,
+    & h2,
+    & h3,
+    & h4,
+    & h5,
+    & h6 {
+      @apply font-semibold;
+    }
+    & h1 {
+      @apply text-lg;
+    }
+    & h2 {
+      @apply text-base;
+    }
+    & ul {
+      @apply list-disc pl-5;
+    }
+    & ol {
+      @apply list-decimal pl-5;
+    }
+    & li > ul,
+    & li > ol {
+      @apply mt-1;
+    }
+    & a {
+      @apply text-primary underline underline-offset-2 hover:opacity-80;
+    }
+    & code {
+      @apply rounded bg-muted px-1 py-0.5 font-mono text-xs;
+    }
+    & pre {
+      @apply overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs;
+    }
+    & pre code {
+      @apply bg-transparent p-0;
+    }
+    & blockquote {
+      @apply border-l-2 pl-3 text-muted-foreground;
+    }
+    & hr {
+      @apply my-3;
+    }
+    & table {
+      @apply w-full border-collapse text-left;
+    }
+    & th,
+    & td {
+      @apply border px-2 py-1 align-top;
+    }
+    & th {
+      @apply bg-muted font-medium;
+    }
   }
 }

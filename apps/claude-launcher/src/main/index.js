@@ -172,9 +172,12 @@ ipcMain.handle('dashboard', async () => {
 })
 
 ipcMain.handle('open:folder', (_e, dir) => shell.openPath(dir))
-ipcMain.handle('open:web', async (_e, repoPath) =>
-  shell.openExternal(await remoteWebUrl(repoPath))
-)
+ipcMain.handle('open:web', async (_e, repoPath) => shell.openExternal(await remoteWebUrl(repoPath)))
+// Enlaces del contenido HTML de las extensiones: solo https y siempre en el navegador.
+ipcMain.handle('open:url', (_e, url) => {
+  if (!/^https:\/\//i.test(url)) throw new Error('Solo se pueden abrir enlaces https.')
+  return shell.openExternal(url)
+})
 
 // --- Tutorial -------------------------------------------------------------------
 
@@ -240,8 +243,14 @@ const prompts = new Map()
 
 // Lo que una extensión puede pedir a la app. Los permisos se comprueban en extensions.js;
 // nada de aquí da acceso a la bóveda.
+const publicProject = ({ id, name, repos }) => ({
+  id,
+  name,
+  repos: repos.map(({ id, name, path }) => ({ id, name, path }))
+})
+
 const hostApi = {
-  'projects.list': () => projects().map(({ id, name, repos }) => ({ id, name, repos })),
+  'projects.list': () => projects().map(publicProject),
   'projects.addRepo': async (_ext, projectId, path) => addRepo(projectId, await repoRoot(path)),
   'views.refresh': (ext, viewId) => broadcast('ext:changed', ext.id, viewId),
   'ui.toast': (ext, message, kind) =>
@@ -291,9 +300,15 @@ ipcMain.handle('ext:pickZip', async (e) => {
 })
 ipcMain.handle('ext:installStaged', (_e, token) => extensions.installStaged(token))
 ipcMain.handle('ext:discardStaged', (_e, token) => extensions.discardStaged(token))
-ipcMain.handle('ext:render', (_e, id, viewId) => extensions.render(id, viewId))
-ipcMain.handle('ext:action', (_e, id, viewId, actionId, args) =>
-  extensions.action(id, viewId, actionId, args)
+// Una pestaña de proyecto recibe solo el proyecto que se está viendo (sin permiso `projects`).
+const extContext = (projectId) =>
+  projectId ? { project: publicProject(findProject(projects(), projectId)) } : {}
+
+ipcMain.handle('ext:render', (_e, id, viewId, projectId) =>
+  extensions.render(id, viewId, extContext(projectId))
+)
+ipcMain.handle('ext:action', (_e, id, viewId, actionId, args, projectId) =>
+  extensions.action(id, viewId, actionId, args, extContext(projectId))
 )
 ipcMain.handle('ext:reply', (_e, id, value) => {
   prompts.get(id)?.(value ?? null)

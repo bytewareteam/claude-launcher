@@ -53,8 +53,9 @@ export const useExtensionCatalog = () =>
   })
 
 // Vista declarativa de una extensión: la pinta ExtensionView con los componentes de la app.
-export const useExtensionView = (extId, viewId) =>
+// Con projectId es una pestaña de ese proyecto.
+export const useExtensionView = (extId, viewId, projectId = null) =>
   useQuery({
-    queryKey: ['ext-view', extId, viewId],
-    queryFn: () => api.extensions.render(extId, viewId)
+    queryKey: ['ext-view', extId, viewId, projectId],
+    queryFn: () => api.extensions.render(extId, viewId, projectId)
   })

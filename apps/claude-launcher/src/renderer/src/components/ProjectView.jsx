@@ -14,11 +14,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger
 } from '@/components/ui/alert-dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { EnvSection } from '@/components/EnvSection'
+import { ExtensionView } from '@/components/ExtensionView'
 import { RepoCard } from '@/components/RepoCard'
 import { SearchInput } from '@/components/SearchInput'
 import { api } from '@/lib/api'
-import { useAction } from '@/lib/queries'
+import { extIcon } from '@/lib/extIcons'
+import { useAction, useExtensions } from '@/lib/queries'
+import { useRememberedOpen } from '@/lib/useRememberedOpen'
 
 export function ProjectView({ project, onRemoved }) {
   const qc = useQueryClient()
@@ -27,27 +31,37 @@ export function ProjectView({ project, onRemoved }) {
     if (path) await api.addRepo(project.id, path)
   })
   const removeProject = useAction(() => api.removeProject(project.id), { onSuccess: onRemoved })
-  const [query, setQuery] = useState('')
-  const q = query.trim().toLowerCase()
-  const repos = project.repos.filter(
-    (r) => !q || r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q)
-  )
+  const { data: extensions = [] } = useExtensions()
+  // Pestañas que añaden las extensiones activas (p. ej. el board de Azure DevOps).
+  const extTabs = extensions
+    .filter((e) => e.enabled)
+    .flatMap((e) =>
+      (e.projectTabs ?? []).map((v) => ({ key: `${e.id}/${v.id}`, extension: e, view: v }))
+    )
+  const [savedTab, setTab] = useRememberedOpen(`project-tab:${project.id}`, 'repos')
+  const tab = extTabs.some((t) => t.key === savedTab) ? savedTab : 'repos'
+
+  const repos = <Repos project={project} />
 
   return (
     <section>
       <header className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <ProjectTitle project={project} />
         <div className="flex gap-2">
-          <Button onClick={() => addRepo.mutate()}>
-            <FolderPlus /> Añadir repositorio
-          </Button>
-          <Button
-            variant="outline"
-            title="Recargar worktrees"
-            onClick={() => qc.invalidateQueries({ queryKey: ['worktrees'] })}
-          >
-            <RefreshCw /> Recargar
-          </Button>
+          {tab === 'repos' && (
+            <>
+              <Button onClick={() => addRepo.mutate()}>
+                <FolderPlus /> Añadir repositorio
+              </Button>
+              <Button
+                variant="outline"
+                title="Recargar worktrees"
+                onClick={() => qc.invalidateQueries({ queryKey: ['worktrees'] })}
+              >
+                <RefreshCw /> Recargar
+              </Button>
+            </>
+          )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" className="text-destructive">
@@ -72,6 +86,44 @@ export function ProjectView({ project, onRemoved }) {
         </div>
       </header>
 
+      {extTabs.length ? (
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            <TabsTrigger value="repos">Repositorios</TabsTrigger>
+            {extTabs.map((t) => {
+              const Icon = extIcon(t.view.icon)
+              return (
+                <TabsTrigger key={t.key} value={t.key}>
+                  <Icon /> {t.view.title}
+                </TabsTrigger>
+              )
+            })}
+          </TabsList>
+          <TabsContent value="repos" className="mt-3">
+            {repos}
+          </TabsContent>
+          {extTabs.map((t) => (
+            <TabsContent key={t.key} value={t.key} className="mt-3">
+              <ExtensionView extension={t.extension} view={t.view} projectId={project.id} />
+            </TabsContent>
+          ))}
+        </Tabs>
+      ) : (
+        repos
+      )}
+    </section>
+  )
+}
+
+function Repos({ project }) {
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const repos = project.repos.filter(
+    (r) => !q || r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q)
+  )
+
+  return (
+    <>
       <div className="mb-4 rounded-xl border bg-card px-4 py-2.5">
         <EnvSection
           id={project.id}
@@ -97,7 +149,7 @@ export function ProjectView({ project, onRemoved }) {
           <RepoCard key={r.id} project={project} repo={r} />
         ))}
       </div>
-    </section>
+    </>
   )
 }
 
