@@ -15,7 +15,8 @@ const LOG_LINES = 200
 const METHOD_PERMISSION = {
   'projects.list': 'projects',
   'projects.addRepo': 'projects',
-  'ui.pickFolder': 'dialogs'
+  'ui.pickFolder': 'dialogs',
+  'dev.start': 'develop'
 }
 
 // La app no trae extensiones: se instalan del catálogo o de un .zip en userDir. En desarrollo
@@ -42,7 +43,8 @@ function normalizePermissions(perms = {}) {
   return {
     exec: Array.isArray(perms.exec) ? perms.exec.map(String) : [],
     projects: !!perms.projects,
-    dialogs: !!perms.dialogs
+    dialogs: !!perms.dialogs,
+    develop: !!perms.develop
   }
 }
 

@@ -100,6 +100,7 @@ src/
     git.js       Wrappers de `git` (worktrees, ramas remotas, estado).
     vault.js     Bóveda KeePass (kdbxweb + Argon2 vía hash-wasm). Autobloqueo configurable (15 min por defecto).
     terminal.js  Lanza `wt.exe … claude` con un entorno filtrado.
+    dev.js       «Iniciar desarrollo»: ruta del worktree, instalación de dependencias y contexto para Claude.
     extensions.js       Instala/desinstala extensiones, guarda su consentimiento y las arranca.
     extension-packages.js  Catálogo remoto, descarga verificada (sha256) y extracción segura de .zip.
     extension-host.js   Corre dentro del utilityProcess de cada extensión (entrada aparte de Vite).

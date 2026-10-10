@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
 import { join, basename } from 'path'
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import Store from 'electron-store'
@@ -13,10 +13,14 @@ import {
   worktreeStatus,
   removeWorktree,
   repoSummary,
-  remoteWebUrl
+  remoteWebUrl,
+  defaultRemoteBranch,
+  checkBranchName,
+  addWorktree
 } from './git'
 import { openClaude, openShell, CLAUDE_ARGS } from './terminal'
 import { claudeOptions } from './claude-cli'
+import * as dev from './dev'
 import * as ide from './ide'
 import * as extensions from './extensions'
 import icon from '../../resources/icon.png?asset'
@@ -157,18 +161,22 @@ ipcMain.handle('repo:pick', async (e) => {
   return repoRoot(res.filePaths[0])
 })
 
-const addRepo = (projectId, repoPath) =>
-  updateProjects((list) => {
+const findRepo = (projectId, repoId) => {
+  const r = findProject(projects(), projectId).repos.find((x) => x.id === repoId)
+  if (!r) throw new Error('Repositorio no encontrado')
+  return r
+}
+
+// La rama principal empieza siendo la del remoto (origin/HEAD) si git la conoce.
+async function addRepo(projectId, repoPath) {
+  const baseBranch = (await defaultRemoteBranch(repoPath)) || DEFAULT_BASE_BRANCH
+  return updateProjects((list) => {
     const p = findProject(list, projectId)
     if (!p.repos.some((r) => r.path.toLowerCase() === repoPath.toLowerCase())) {
-      p.repos.push({
-        id: randomUUID(),
-        name: basename(repoPath),
-        path: repoPath,
-        baseBranch: DEFAULT_BASE_BRANCH
-      })
+      p.repos.push({ id: randomUUID(), name: basename(repoPath), path: repoPath, baseBranch })
     }
   })
+}
 
 ipcMain.handle('repo:add', (_e, projectId, repoPath) => addRepo(projectId, repoPath))
 
@@ -196,18 +204,67 @@ ipcMain.handle('worktree:remove', (_e, repoPath, wtPath, force) =>
   removeWorktree(repoPath, wtPath, force)
 )
 
-ipcMain.handle('open:claude', (_e, dir, title, scope) => {
+// Abre Claude con las variables de la bóveda del scope (si está desbloqueada) y lo apunta en el
+// historial. Devuelve cuántas variables se inyectaron.
+function launchClaude(dir, title, scope, extraArgs) {
   let env = {}
   if (scope && vault.isUnlocked()) {
     const project = resolveScope({ projectId: scope.projectId })
     env = vault.envFor(project, scope.repoId ? resolveScope(scope) : null)
   }
-  openClaude(dir, title, env, settings().claude)
+  openClaude(dir, title, env, settings().claude, extraArgs)
   // Historial de sesiones para la pantalla de inicio (últimas 500).
   const launch = { at: new Date().toISOString(), dir, title, ...scope }
   store.set('launches', [launch, ...store.get('launches')].slice(0, 500))
   return Object.keys(env).length
+}
+
+ipcMain.handle('open:claude', (_e, dir, title, scope) => launchClaude(dir, title, scope))
+
+// --- Iniciar desarrollo -----------------------------------------------------------
+// Una extensión lo pide (`ctx.dev.start`), el renderer muestra el diálogo y va llamando a cada
+// paso. La ruta del worktree y el contexto se quedan aquí: el renderer solo maneja el id.
+
+const devRequests = new Map()
+
+function devRequest(id) {
+  const req = devRequests.get(id)
+  if (!req) throw new Error('La petición de desarrollo ya no existe.')
+  return req
+}
+
+ipcMain.handle('dev:worktree', async (_e, id, repoId, branch) => {
+  const req = devRequest(id)
+  const repo = findRepo(req.projectId, repoId)
+  await checkBranchName(repo.path, branch)
+  // Si la rama ya tiene worktree se retoma ahí, sin crear nada.
+  const existing = (await listWorktrees(repo.path)).find((w) => w.branch === branch)
+  let path = existing?.path
+  if (!path) {
+    path = dev.worktreePath(repo.path, branch)
+    if (existsSync(path)) throw new Error(`Ya existe la carpeta ${path}.`)
+    await addWorktree(repo.path, path, branch, repo.baseBranch || DEFAULT_BASE_BRANCH)
+  }
+  Object.assign(req, { repoId, branch, path })
+  return { path, created: !existing, install: dev.installCommand(path) }
 })
+
+ipcMain.handle('dev:install', (_e, id) => dev.install(devRequest(id).path))
+
+ipcMain.handle('dev:open', async (_e, id) => {
+  const req = devRequest(id)
+  if (!req.path) throw new Error('Falta crear el worktree.')
+  const file = await dev.writeContext(req.path, req.context)
+  // Modo plan salvo que el usuario ya fije otro en la configuración.
+  const mode = /--permission-mode/.test(settings().claude.args) ? [] : ['--permission-mode', 'plan']
+  const repo = findRepo(req.projectId, req.repoId)
+  const scope = { projectId: req.projectId, repoId: req.repoId }
+  const n = launchClaude(req.path, `${repo.name}:${req.branch}`, scope, [...mode, dev.planPrompt(file)])
+  devRequests.delete(id)
+  return n
+})
+
+ipcMain.handle('dev:cancel', (_e, id) => devRequests.delete(id))
 
 ipcMain.handle('dashboard', async () => {
   const list = projects()
@@ -338,6 +395,20 @@ const hostApi = {
       properties: ['openDirectory', 'createDirectory']
     })
     return res.canceled ? null : res.filePaths[0] || null
+  },
+  // Abre el diálogo «Iniciar desarrollo»; no espera a que el usuario lo complete.
+  'dev.start': (ext, request = {}) => {
+    const project = findProject(projects(), request.projectId)
+    const id = randomUUID()
+    devRequests.set(id, { projectId: project.id, context: String(request.context ?? '') })
+    broadcast('dev:request', {
+      id,
+      from: ext.displayName,
+      projectId: project.id,
+      repoId: project.repos.some((r) => r.id === request.repoId) ? request.repoId : null,
+      title: String(request.title ?? '').slice(0, 300),
+      branch: String(request.branch ?? '').slice(0, 200)
+    })
   },
   'ui.openExternal': (_ext, url) => {
     if (!/^https:\/\//i.test(url)) throw new Error('Solo se pueden abrir enlaces https.')

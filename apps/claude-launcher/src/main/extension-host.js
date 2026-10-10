@@ -87,6 +87,11 @@ const ctx = {
     pickFolder: (options = {}) => host('ui.pickFolder', options),
     openExternal: (url) => host('ui.openExternal', url)
   },
+  // Diálogo «Iniciar desarrollo»: worktree desde la rama principal, dependencias y Claude en
+  // modo plan con `context` (Markdown). Vuelve en cuanto se abre el diálogo.
+  dev: {
+    start: (request) => host('dev.start', request)
+  },
   storage: {
     get: (key) => host('storage.get', key),
     set: (key, value) => host('storage.set', key, value)

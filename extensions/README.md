@@ -49,7 +49,8 @@ catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a ex
     "permissions": {
       "exec": ["gh", "git"],
       "projects": true,
-      "dialogs": true
+      "dialogs": true,
+      "develop": true
     },
     "views": [{ "id": "principal", "title": "Mi vista", "icon": "puzzle" }],
     "projectTabs": [{ "id": "board", "title": "Board", "icon": "kanban" }],
@@ -63,6 +64,7 @@ catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a ex
 | `exec: [...]` | `ctx.exec(cmd, ...)` solo con esos programas |
 | `projects` | `ctx.projects.list()` y `ctx.projects.addRepo()` |
 | `dialogs` | `ctx.ui.pickFolder()` |
+| `develop` | `ctx.dev.start()` |
 
 Cada vista de `views` aparece en la barra lateral; cada una de `projectTabs`, como pestaña en la
 pantalla de cada proyecto. Ambas se registran igual con `ctx.views.register`. Una pestaña de
@@ -148,8 +150,16 @@ Con `detail: { title, description?, blocks }`, una cifra de `stats` o un segment
 | `ctx.ui.pickFolder({ title, defaultPath })` | Ruta o `null` |
 | `ctx.ui.toast(mensaje, 'info' \| 'error')` | — |
 | `ctx.ui.openExternal(url)` | Abre un enlace `https://` en el navegador |
+| `ctx.dev.start({ projectId, branch, title, context, repoId? })` | Abre el diálogo *Iniciar desarrollo* (ver abajo) y vuelve en cuanto se muestra |
 | `ctx.storage.get(clave)` / `set(clave, valor)` | Datos JSON propios de la extensión |
 | `ctx.views.refresh(viewId?)` | Vuelve a pintar la vista |
+
+`ctx.dev.start` propone al usuario una rama (`branch`, editable) en uno de los repos del proyecto.
+Al aceptar, la app crea un worktree desde la *rama principal* del repo (configurable en su
+tarjeta) en `../<repo>-worktrees/<rama>`, instala las dependencias (npm, pnpm, yarn, bun, uv,
+poetry o dotnet) y abre Claude Code en modo plan. `context` (Markdown) se guarda en
+`.claude-launcher/contexto.md` dentro del worktree, excluido de git, y el prompt inicial le pide a
+Claude leerlo y planificar antes de tocar nada. Si la rama ya tiene worktree, se reutiliza.
 
 En Windows `ctx.exec` también lanza scripts `.cmd`/`.bat` (como `az`), pero rechaza argumentos
 con `" % ! ^ & | < >` o saltos de línea, que cmd.exe interpretaría.
