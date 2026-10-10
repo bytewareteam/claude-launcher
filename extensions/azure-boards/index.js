@@ -36,6 +36,10 @@ const dateFmt = new Intl.DateTimeFormat('es-ES', {
 const dateTimeFmt = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
 const formatDate = (iso) => dateFmt.format(new Date(iso))
 const DAY = 24 * 60 * 60_000
+// Los datos del sprint y de cada historia se guardan en memoria una hora: moverse entre
+// pestañas e historias no llama a Azure DevOps. «Sincronizar» los descarta.
+const TTL = 60 * 60_000
+const timeFmt = new Intl.DateTimeFormat('es-ES', { timeStyle: 'short' })
 const sprintDates = ({ attributes: a = {} }) =>
   a.startDate && a.finishDate
     ? `${formatDate(a.startDate)} – ${formatDate(a.finishDate)}`
@@ -45,13 +49,28 @@ const sprintDates = ({ attributes: a = {} }) =>
 // Vacío si solo lleva etiquetas o espacios (p. ej. `<div><br></div>`).
 const hasText = (html) => /\S/.test(String(html ?? '').replace(/<[^>]*>|&nbsp;/gi, ''))
 
-const refresh = { id: 'refresh', icon: 'refresh', title: 'Recargar' }
+const refresh = { id: 'refresh', icon: 'refresh', title: 'Sincronizar con Azure DevOps' }
 const linkAction = { id: 'link', label: 'Vincular proyecto', icon: 'link' }
 
 exports.activate = (ctx) => {
   let cached // { token, expires } en memoria: `az` tarda ~1 s por llamada.
   const meta = new Map() // org/proyecto → { categories, states }: casi nunca cambian.
   const openStory = new Map() // id de proyecto → id de la historia abierta en el kanban.
+  const store = new Map() // clave → { at, value }: ver `TTL`.
+
+  // Guarda la promesa (no el resultado) para que dos pestañas a la vez compartan la petición.
+  // Si falla no se guarda, para reintentar en el siguiente render.
+  function remember(key, fn) {
+    const hit = store.get(key)
+    if (hit && Date.now() - hit.at < TTL) return hit
+    const entry = { at: Date.now(), value: fn() }
+    entry.value.catch(() => store.get(key) === entry && store.delete(key))
+    store.set(key, entry)
+    return entry
+  }
+  const forget = (prefix) => {
+    for (const key of store.keys()) if (key.startsWith(prefix)) store.delete(key)
+  }
 
   async function token() {
     if (cached && cached.expires - Date.now() > 5 * 60_000) return cached.token
@@ -119,7 +138,9 @@ exports.activate = (ctx) => {
       ],
       { placeholder: 'Sprint que quieres ver…' }
     )
-    if (id) await ctx.storage.set(sprintKey(project.id), id === 'current' ? null : id)
+    if (!id) return
+    await ctx.storage.set(sprintKey(project.id), id === 'current' ? null : id)
+    forget(`${project.id}:`)
   }
 
   // Busca un remoto de Azure DevOps en los repos del proyecto.
@@ -180,6 +201,7 @@ exports.activate = (ctx) => {
     if (!name) return
     await ctx.storage.set(linkKey(project.id), { org, project: name })
     await ctx.storage.set(sprintKey(project.id), null)
+    forget(`${project.id}:`)
     return { toast: `«${project.name}» vinculado a ${org}/${name}.` }
   }
 
@@ -198,6 +220,7 @@ exports.activate = (ctx) => {
     if (!team) return
     await ctx.storage.set(linkKey(project.id), { ...link, team })
     await ctx.storage.set(sprintKey(project.id), null)
+    forget(`${project.id}:`)
   }
 
   // --- Datos de Azure DevOps ----------------------------------------------------------
@@ -676,10 +699,16 @@ exports.activate = (ctx) => {
     return null
   }
 
-  // Datos comunes a las dos pestañas: vínculo, equipo, sprint elegido y sus elementos.
+  // Datos comunes a las dos pestañas, desde la memoria si tienen menos de `TTL`.
   async function load(project) {
     const link = await linkOf(project)
     if (!link) return null
+    const { at, value } = remember(`${project.id}:sprint`, () => fetchSprint(project, link))
+    return { ...(await value), syncedAt: at }
+  }
+
+  // Vínculo, equipo, sprint elegido, sus elementos y las tareas de cada historia.
+  async function fetchSprint(project, link) {
     const team = await teamOf(link)
     const [md, sprint, me] = await Promise.all([
       metadata(link),
@@ -691,6 +720,8 @@ exports.activate = (ctx) => {
     const boardUrl = sprint
       ? `${base(link)}/_sprints/taskboard/${enc(team)}/${sprint.path.split('\\').map(enc).join('/')}`
       : `${base(link)}/_boards/board/t/${enc(team)}`
+    const live = (it) => stateInfo(md, it).category !== 'Removed'
+    const stories = items.filter(of(STORY))
     return {
       link,
       team,
@@ -698,11 +729,24 @@ exports.activate = (ctx) => {
       sprint,
       me,
       boardUrl,
-      stories: items.filter(of(STORY)),
+      stories,
       tasks: items.filter(of(TASK)),
       bugs: items.filter(of(BUG)),
-      live: (it) => stateInfo(md, it).category !== 'Removed'
+      // Historias sin las eliminadas y con sus tareas.
+      all: sprint ? await withTasks(link, md, stories.filter(live)) : [],
+      live
     }
+  }
+
+  // Descripción, criterios y comentarios de una historia, desde la memoria si son recientes.
+  const storyDetail = (project, link, id) =>
+    remember(`${project.id}:story:${id}`, () =>
+      Promise.all([storyText(link, id), comments(link, id)])
+    ).value
+
+  const ago = (at) => {
+    const min = Math.floor((Date.now() - at) / 60_000)
+    return min < 1 ? 'ahora mismo' : `hace ${min} min (${timeFmt.format(at)})`
   }
 
   const unlinked = {
@@ -722,8 +766,8 @@ exports.activate = (ctx) => {
     text: `El equipo ${team} no tiene un sprint en curso. Elige uno con el botón de sprint.`
   })
 
-  const header = ({ link, team, sprint, boardUrl }) => ({
-    description: `${link.org} / ${link.project} · equipo ${team}`,
+  const header = ({ link, team, sprint, boardUrl, syncedAt }) => ({
+    description: `${link.org} / ${link.project} · equipo ${team} · sincronizado ${ago(syncedAt)}`,
     actions: [
       {
         id: 'sprint',
@@ -741,9 +785,8 @@ exports.activate = (ctx) => {
   async function renderDashboard({ project }) {
     const data = await load(project)
     if (!data) return unlinked
-    const { link, team, md, sprint, me, stories, tasks, bugs, live } = data
+    const { link, team, md, sprint, me, all, stories, tasks, bugs } = data
     if (!sprint) return { ...header(data), blocks: [noSprint(team)] }
-    const all = await withTasks(link, md, stories.filter(live))
     const isMine = (it) => it.assignedId === me
     const mine = all.filter(isMine)
     // Historias de otras personas en las que tengo tareas.
@@ -799,21 +842,17 @@ exports.activate = (ctx) => {
   async function renderKanban({ project }) {
     const data = await load(project)
     if (!data) return unlinked
-    const { link, team, md, sprint, stories, live } = data
+    const { link, team, md, sprint, all } = data
     if (!sprint) return { ...header(data), blocks: [noSprint(team)] }
-    const all = await withTasks(link, md, stories.filter(live))
     // Si la historia abierta ya no está en el sprint (otro sprint, eliminada…), vuelve al tablero.
     const story = all.find((it) => it.id === openStory.get(project.id))
-    if (story) return renderStory(data, story)
+    if (story) return renderStory(project, data, story)
     openStory.delete(project.id)
     return { ...header(data), blocks: [kanban(md, link, all)] }
   }
 
-  async function renderStory({ link, md, sprint }, story) {
-    const [{ description, criteria }, notes] = await Promise.all([
-      storyText(link, story.id),
-      comments(link, story.id)
-    ])
+  async function renderStory(project, { link, md, sprint, syncedAt }, story) {
+    const [{ description, criteria }, notes] = await storyDetail(project, link, story.id)
     const section = (title, html, empty, open = true) => ({
       type: 'section',
       title,
@@ -823,7 +862,7 @@ exports.activate = (ctx) => {
       ]
     })
     return {
-      description: `${sprint.name} · ${story.type} · ${ownerOf(story)}`,
+      description: `${sprint.name} · ${story.type} · ${ownerOf(story)} · sincronizado ${ago(syncedAt)}`,
       actions: [
         { id: 'back', label: 'Volver al tablero', icon: 'arrow-left' },
         { ...openAction(link, story), label: 'Abrir en Azure DevOps' },
@@ -881,7 +920,10 @@ exports.activate = (ctx) => {
     if (id === 'link') return chooseLink(project)
     if (id === 'team') return chooseTeam(project)
     if (id === 'sprint') return chooseSprint(project)
-    if (id === 'refresh') meta.clear()
+    if (id === 'refresh') {
+      meta.clear()
+      forget(`${project.id}:`)
+    }
   }
 
   // Los errores de az se muestran en la propia pestaña, con la opción de vincular otro proyecto.
