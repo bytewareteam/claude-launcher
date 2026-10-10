@@ -1,3 +1,13 @@
+## 1.1.0 (2026-10-10)
+
+### 🚀 Features
+
+- botón para abrir el repositorio en la web ([502e5d7](https://github.com/bytewareteam/claude-launcher/commit/502e5d7))
+
+### ❤️ Thank You
+
+- Willian Monoga @bytewareteam
+
 # 1.0.0 (2026-10-10)
 
 ### 🚀 Features
