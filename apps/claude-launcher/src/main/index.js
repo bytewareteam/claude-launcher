@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, safeStorage } from 'electron'
-import { join, basename, resolve } from 'path'
+import { join, basename, resolve, normalize } from 'path'
+import { fileURLToPath } from 'url'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { randomBytes, randomUUID } from 'crypto'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -135,6 +136,32 @@ function resolveScope({ projectId, repoId }) {
 
 const windowOf = (e) => BrowserWindow.fromWebContents(e.sender)
 
+const devRendererUrl = () => (is.dev ? process.env.ELECTRON_RENDERER_URL : null)
+const rendererIndex = () => join(__dirname, '../renderer/index.html')
+
+// Solo la página de la app, en su marco principal, habla con el proceso principal: si el renderer
+// llegara a navegar o a cargar otro marco, esos no heredan la API.
+function isAppFrame(frame) {
+  if (!frame || frame.parent) return false
+  try {
+    const url = new URL(frame.url)
+    if (devRendererUrl()) return url.origin === new URL(devRendererUrl()).origin
+    return (
+      url.protocol === 'file:' &&
+      normalize(fileURLToPath(url)).toLowerCase() === normalize(rendererIndex()).toLowerCase()
+    )
+  } catch {
+    return false
+  }
+}
+
+function handle(channel, fn) {
+  ipcMain.handle(channel, (e, ...args) => {
+    if (!isAppFrame(e.senderFrame)) throw new Error('Petición rechazada: no viene de la app.')
+    return fn(e, ...args)
+  })
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1100,
@@ -151,26 +178,26 @@ function createWindow() {
     }
   })
   win.on('ready-to-show', () => win.show())
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
-  else win.loadFile(join(__dirname, '../renderer/index.html'))
+  if (devRendererUrl()) win.loadURL(devRendererUrl())
+  else win.loadFile(rendererIndex())
 }
 
 // --- Proyectos y repos ------------------------------------------------------------
 
-ipcMain.handle('projects:list', () => projects())
+handle('projects:list', () => projects())
 
-ipcMain.handle('project:add', (_e, name) => {
+handle('project:add', (_e, name) => {
   const id = randomUUID()
   updateProjects((list) => list.push({ id, name, repos: [] }))
   return id
 })
 
-ipcMain.handle('project:rename', (_e, id, name) =>
+handle('project:rename', (_e, id, name) =>
   updateProjects((list) => (findProject(list, id).name = name))
 )
 
 // Extensión de tablero (Jira, Azure Boards…) cuyas pestañas muestra el proyecto; null la quita.
-ipcMain.handle('project:setBoard', (_e, id, extId) =>
+handle('project:setBoard', (_e, id, extId) =>
   updateProjects((list) => {
     const p = findProject(list, id)
     if (extId) p.board = String(extId)
@@ -178,26 +205,77 @@ ipcMain.handle('project:setBoard', (_e, id, extId) =>
   })
 )
 
-ipcMain.handle('project:remove', (_e, id) =>
+handle('project:remove', (_e, id) =>
   store.set(
     'projects',
     projects().filter((p) => p.id !== id)
   )
 )
 
-ipcMain.handle('repo:pick', async (e) => {
+handle('repo:pick', async (e) => {
   const res = await dialog.showOpenDialog(windowOf(e), {
     title: 'Selecciona la carpeta del repositorio',
     properties: ['openDirectory']
   })
   if (res.canceled || !res.filePaths[0]) return null
-  return repoRoot(res.filePaths[0])
+  const root = await repoRoot(res.filePaths[0])
+  pickedRepos.add(root)
+  return root
 })
+
+// Carpetas elegidas en el diálogo de `repo:pick`: `repo:add` solo acepta una de estas.
+const pickedRepos = new Set()
 
 const findRepo = (projectId, repoId) => {
   const r = findProject(projects(), projectId).repos.find((x) => x.id === repoId)
   if (!r) throw new Error('Repositorio no encontrado')
   return r
+}
+
+const samePath = (a, b) => resolve(a).toLowerCase() === resolve(b).toLowerCase()
+const allRepos = () => projects().flatMap((p) => p.repos.map((r) => ({ project: p, repo: r })))
+
+// Repo registrado con esa ruta exacta.
+function registeredRepo(repoPath) {
+  if (typeof repoPath !== 'string' || !repoPath) throw new Error('Ruta no válida.')
+  const found = allRepos().find(({ repo }) => samePath(repo.path, repoPath))
+  if (!found) throw new Error(`${repoPath} no es un repositorio registrado.`)
+  return found.repo
+}
+
+// Últimos worktrees vistos de cada repo: validar una ruta conocida no relanza git cada vez.
+const worktreeCache = new Map()
+
+async function worktreesOf(repoPath) {
+  const list = await listWorktrees(repoPath)
+  worktreeCache.set(repoPath, list)
+  return list
+}
+
+// Repo registrado (o worktree suyo) que contiene exactamente `dir`. Mira primero los worktrees ya
+// conocidos y, si no está, vuelve a preguntar a git.
+async function findByPath(dir) {
+  if (typeof dir !== 'string' || !dir) throw new Error('Ruta no válida.')
+  const all = allRepos()
+  const direct = all.find(({ repo }) => samePath(repo.path, dir))
+  if (direct) return { ...direct, branch: null }
+  for (const fresh of [false, true]) {
+    for (const entry of all) {
+      const wts =
+        fresh || !worktreeCache.has(entry.repo.path)
+          ? await worktreesOf(entry.repo.path).catch(() => [])
+          : worktreeCache.get(entry.repo.path)
+      const wt = wts.find((w) => w.path && samePath(w.path, dir))
+      if (wt) return { ...entry, branch: wt.branch ?? null, path: wt.path }
+    }
+  }
+  throw new Error(`${dir} no es un repositorio registrado ni uno de sus worktrees.`)
+}
+
+// Ruta registrada (repo o worktree) tal y como la conoce la app.
+const knownDir = async (dir) => {
+  const { repo, path } = await findByPath(dir)
+  return path || repo.path
 }
 
 // La rama principal empieza siendo la del remoto (origin/HEAD) si git la conoce.
@@ -211,31 +289,41 @@ async function addRepo(projectId, repoPath) {
   })
 }
 
-ipcMain.handle('repo:add', (_e, projectId, repoPath) => addRepo(projectId, repoPath))
+handle('repo:add', (_e, projectId, repoPath) => {
+  if (!pickedRepos.has(repoPath)) throw new Error('Elige el repositorio desde el diálogo.')
+  pickedRepos.delete(repoPath)
+  return addRepo(projectId, repoPath)
+})
 
-ipcMain.handle('repo:remove', (_e, projectId, repoId) =>
+handle('repo:remove', (_e, projectId, repoId) =>
   updateProjects((list) => {
     const p = findProject(list, projectId)
     p.repos = p.repos.filter((r) => r.id !== repoId)
   })
 )
 
-ipcMain.handle('repo:worktrees', (_e, repoPath) => listWorktrees(repoPath))
-ipcMain.handle('repo:remoteBranches', (_e, repoPath) => remoteBranches(repoPath))
+handle('repo:worktrees', (_e, repoPath) => worktreesOf(registeredRepo(repoPath).path))
+handle('repo:remoteBranches', (_e, repoPath) => remoteBranches(registeredRepo(repoPath).path))
 
-ipcMain.handle('repo:setBase', (_e, projectId, repoId, branch) =>
+handle('repo:setBase', (_e, projectId, repoId, branch) =>
   updateProjects((list) => {
     const r = findProject(list, projectId).repos.find((x) => x.id === repoId)
     if (r) r.baseBranch = branch
   })
 )
 
-ipcMain.handle('worktree:status', (_e, wtPath, base) =>
-  worktreeStatus(wtPath, base || DEFAULT_BASE_BRANCH)
+handle('worktree:status', async (_e, wtPath, base) =>
+  worktreeStatus(await knownDir(wtPath), base || DEFAULT_BASE_BRANCH)
 )
-ipcMain.handle('worktree:remove', (_e, repoPath, wtPath, force) =>
-  removeWorktree(repoPath, wtPath, force)
-)
+// Solo worktrees secundarios del propio repo, comprobados con git justo antes de borrar.
+handle('worktree:remove', async (_e, repoPath, wtPath, force) => {
+  const repo = registeredRepo(repoPath)
+  const wt = (await worktreesOf(repo.path)).find(
+    (w) => !w.main && w.path && samePath(w.path, String(wtPath))
+  )
+  if (!wt) throw new Error(`${wtPath} no es un worktree de ${repo.name}.`)
+  return removeWorktree(repo.path, wt.path, !!force)
+})
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -278,8 +366,8 @@ function launchClaude(dir, title, scope, extraArgs = [], resume) {
 }
 
 // `resume`: `{ resume: true, sessionId }` reanuda esa sesión del historial.
-ipcMain.handle('open:claude', (_e, dir, title, scope, resume) =>
-  launchClaude(dir, title, scope, [], resume)
+handle('open:claude', async (_e, dir, title, scope, resume) =>
+  launchClaude(await knownDir(dir), title, scope, [], resume)
 )
 
 // --- Iniciar desarrollo -----------------------------------------------------------
@@ -294,7 +382,7 @@ function devRequest(id) {
   return req
 }
 
-ipcMain.handle('dev:worktree', async (_e, id, repoId, branch) => {
+handle('dev:worktree', async (_e, id, repoId, branch) => {
   const req = devRequest(id)
   const repo = findRepo(req.projectId, repoId)
   await checkBranchName(repo.path, branch)
@@ -310,9 +398,9 @@ ipcMain.handle('dev:worktree', async (_e, id, repoId, branch) => {
   return { path, created: !existing, install: dev.installCommand(path) }
 })
 
-ipcMain.handle('dev:install', (_e, id) => dev.install(devRequest(id).path))
+handle('dev:install', (_e, id) => dev.install(devRequest(id).path))
 
-ipcMain.handle('dev:open', async (_e, id) => {
+handle('dev:open', async (_e, id) => {
   const req = devRequest(id)
   if (!req.path) throw new Error('Falta crear el worktree.')
   const file = await dev.writeContext(req.path, req.context)
@@ -328,9 +416,9 @@ ipcMain.handle('dev:open', async (_e, id) => {
   return n
 })
 
-ipcMain.handle('dev:cancel', (_e, id) => devRequests.delete(id))
+handle('dev:cancel', (_e, id) => devRequests.delete(id))
 
-ipcMain.handle('dashboard', async () => {
+handle('dashboard', async () => {
   const list = projects()
   const repos = list.flatMap((p) => p.repos)
   const summaries = await Promise.all(repos.map((r) => repoSummary(r.path)))
@@ -340,31 +428,34 @@ ipcMain.handle('dashboard', async () => {
   }
 })
 
-ipcMain.handle('open:shell', (_e, dir, title) => openShell(dir, title))
-ipcMain.handle('open:folder', (_e, dir) => shell.openPath(dir))
+handle('open:shell', async (_e, dir, title) => openShell(await knownDir(dir), title))
+// `shell.openPath` abre (o ejecuta) cualquier archivo: solo carpetas de repos y worktrees.
+handle('open:folder', async (_e, dir) => shell.openPath(await knownDir(dir)))
 // IDE: el elegido por el usuario o, si no hay, el primero que se encuentre.
-ipcMain.handle('ide:list', () => ({
+handle('ide:list', () => ({
   ides: ide.detect().map(({ id, name, file }) => ({ id, name, path: file })),
   selected: store.get('ide') ?? null
 }))
-ipcMain.handle('ide:setDefault', (_e, id) => store.set('ide', id))
+handle('ide:setDefault', (_e, id) => store.set('ide', id))
 // Con `id` abre ese IDE solo esta vez; el predeterminado se elige en Configuración.
-ipcMain.handle('ide:open', (_e, dir, id) => ide.open(dir, id || store.get('ide')))
-ipcMain.handle('open:web', async (_e, repoPath) => shell.openExternal(await remoteWebUrl(repoPath)))
+handle('ide:open', async (_e, dir, id) => ide.open(await knownDir(dir), id || store.get('ide')))
+handle('open:web', async (_e, repoPath) =>
+  shell.openExternal(await remoteWebUrl(registeredRepo(repoPath).path))
+)
 // Enlaces del contenido HTML de las extensiones: solo https y siempre en el navegador.
-ipcMain.handle('open:url', (_e, url) => {
+handle('open:url', (_e, url) => {
   if (!/^https:\/\//i.test(url)) throw new Error('Solo se pueden abrir enlaces https.')
   return shell.openExternal(url)
 })
 
 // --- Configuración --------------------------------------------------------------
 
-ipcMain.handle('settings:get', () => ({
+handle('settings:get', () => ({
   ...settings(),
   defaultVaultPath: defaultVaultPath(),
   systemBinaries: systemBinaries()
 }))
-ipcMain.handle('settings:pickBinary', async (e) => {
+handle('settings:pickBinary', async (e) => {
   const res = await dialog.showOpenDialog(windowOf(e), {
     title: 'Selecciona el ejecutable',
     filters: [{ name: 'Programas', extensions: ['exe', 'cmd', 'bat'] }],
@@ -372,23 +463,23 @@ ipcMain.handle('settings:pickBinary', async (e) => {
   })
   return res.canceled ? null : res.filePaths[0] || null
 })
-ipcMain.handle('settings:set', (_e, patch) => updateSettings(patch))
-ipcMain.handle('claude:options', () => claudeOptions())
+handle('settings:set', (_e, patch) => updateSettings(patch))
+handle('claude:options', () => claudeOptions())
 
 // --- Tutorial -------------------------------------------------------------------
 
 // Quien actualiza con proyectos ya creados no necesita el tutorial de bienvenida.
-ipcMain.handle('onboarding:pending', () => !(store.get('onboardingDone') ?? projects().length > 0))
-ipcMain.handle('onboarding:done', () => store.set('onboardingDone', true))
+handle('onboarding:pending', () => !(store.get('onboardingDone') ?? projects().length > 0))
+handle('onboarding:done', () => store.set('onboardingDone', true))
 
 // --- Bóveda ---------------------------------------------------------------------
 
-ipcMain.handle('vault:status', () => vault.status(vaultPath()))
-ipcMain.handle('vault:create', (_e, password) => vault.create(vaultPath(), password))
-ipcMain.handle('vault:unlock', (_e, password) => vault.unlock(vaultPath(), password))
-ipcMain.handle('vault:lock', () => vault.lock())
+handle('vault:status', () => vault.status(vaultPath()))
+handle('vault:create', (_e, password) => vault.create(vaultPath(), password))
+handle('vault:unlock', (_e, password) => vault.unlock(vaultPath(), password))
+handle('vault:lock', () => vault.lock())
 
-ipcMain.handle('vault:useExisting', async (e) => {
+handle('vault:useExisting', async (e) => {
   const res = await dialog.showOpenDialog(windowOf(e), {
     title: 'Selecciona tu base de datos KeePass',
     filters: [{ name: 'KeePass', extensions: ['kdbx'] }],
@@ -400,20 +491,20 @@ ipcMain.handle('vault:useExisting', async (e) => {
   return true
 })
 
-ipcMain.handle('vault:resetPath', () => {
+handle('vault:resetPath', () => {
   vault.lock()
   store.delete('vaultPath')
 })
-ipcMain.handle('vault:showFile', () => shell.showItemInFolder(vaultPath()))
+handle('vault:showFile', () => shell.showItemInFolder(vaultPath()))
 
-ipcMain.handle('vault:list', (_e, scope) => vault.listVars(resolveScope(scope)))
-ipcMain.handle('vault:get', (_e, scope, id) => vault.getValue(resolveScope(scope), id))
-ipcMain.handle('vault:set', (_e, scope, key, value) =>
+handle('vault:list', (_e, scope) => vault.listVars(resolveScope(scope)))
+handle('vault:get', (_e, scope, id) => vault.getValue(resolveScope(scope), id))
+handle('vault:set', (_e, scope, key, value) =>
   vault.setVars(resolveScope(scope), [{ key, value }])
 )
-ipcMain.handle('vault:delete', (_e, scope, id) => vault.deleteVar(resolveScope(scope), id))
+handle('vault:delete', (_e, scope, id) => vault.deleteVar(resolveScope(scope), id))
 
-ipcMain.handle('vault:copy', (_e, scope, id) => {
+handle('vault:copy', (_e, scope, id) => {
   const value = vault.getValue(resolveScope(scope), id)
   clipboard.writeText(value)
   // Limpia el portapapeles pasado el plazo configurado si sigue conteniendo el secreto.
@@ -422,7 +513,7 @@ ipcMain.handle('vault:copy', (_e, scope, id) => {
   }, settings().vault.clipboardSeconds * 1000)
 })
 
-ipcMain.handle('vault:importEnv', async (e, scope) => {
+handle('vault:importEnv', async (e, scope) => {
   const res = await dialog.showOpenDialog(windowOf(e), {
     title: 'Importar archivo .env',
     properties: ['openFile', 'showHiddenFiles']
@@ -465,21 +556,6 @@ function mcpArgs() {
     : []
 }
 
-// Repo registrado (o worktree suyo) que contiene exactamente `dir`.
-async function findByPath(dir) {
-  const target = resolve(dir).toLowerCase()
-  const all = projects().flatMap((p) => p.repos.map((r) => ({ project: p, repo: r })))
-  const same = (path) => resolve(path).toLowerCase() === target
-  const direct = all.find(({ repo }) => same(repo.path))
-  if (direct) return { ...direct, branch: null }
-  for (const entry of all) {
-    const wts = await listWorktrees(entry.repo.path).catch(() => [])
-    const wt = wts.find((w) => w.path && same(w.path))
-    if (wt) return { ...entry, branch: wt.branch ?? null, path: wt.path }
-  }
-  throw new Error(`${dir} no es un repositorio registrado ni uno de sus worktrees.`)
-}
-
 const focusWindow = () => {
   const win = BrowserWindow.getAllWindows()[0]
   if (!win) return
@@ -497,7 +573,7 @@ const mcpApp = {
     })),
   worktrees: async ({ projectId, repoId, includeStatus }) => {
     const repo = findRepo(projectId, repoId)
-    const list = await listWorktrees(repo.path)
+    const list = await worktreesOf(repo.path)
     if (!includeStatus) return list
     const base = repo.baseBranch || DEFAULT_BASE_BRANCH
     return Promise.all(
@@ -533,12 +609,12 @@ function startMcp() {
   mcp.start({ port, token: mcpToken(), app: mcpApp, version: app.getVersion() })
 }
 
-ipcMain.handle('mcp:status', () => {
+handle('mcp:status', () => {
   const { enabled, port } = settings().mcp
   const url = mcp.urlFor(port)
   return { ...mcp.status(), enabled, url, token: mcpToken(), name: mcp.SERVER_NAME }
 })
-ipcMain.handle('mcp:regenerateToken', () => {
+handle('mcp:regenerateToken', () => {
   store.delete('mcpToken')
   startMcp()
 })
@@ -637,15 +713,15 @@ const hostApi = {
   }
 }
 
-ipcMain.handle('ext:list', () => extensions.list())
-ipcMain.handle('ext:setEnabled', (_e, id, enabled) => extensions.setEnabled(id, enabled))
-ipcMain.handle('ext:reload', () => extensions.scan())
-ipcMain.handle('ext:log', (_e, id) => extensions.logOf(id))
-ipcMain.handle('ext:openFolder', () => shell.openPath(extensions.userDir()))
-ipcMain.handle('ext:catalog', (_e, force) => extensions.catalog(force))
-ipcMain.handle('ext:install', (_e, name) => extensions.installFromCatalog(name))
-ipcMain.handle('ext:uninstall', (_e, id) => extensions.uninstall(id))
-ipcMain.handle('ext:pickZip', async (e) => {
+handle('ext:list', () => extensions.list())
+handle('ext:setEnabled', (_e, id, enabled) => extensions.setEnabled(id, enabled))
+handle('ext:reload', () => extensions.scan())
+handle('ext:log', (_e, id) => extensions.logOf(id))
+handle('ext:openFolder', () => shell.openPath(extensions.userDir()))
+handle('ext:catalog', (_e, force) => extensions.catalog(force))
+handle('ext:install', (_e, name) => extensions.installFromCatalog(name))
+handle('ext:uninstall', (_e, id) => extensions.uninstall(id))
+handle('ext:pickZip', async (e) => {
   const res = await dialog.showOpenDialog(windowOf(e), {
     title: 'Instalar extensión desde .zip',
     filters: [{ name: 'Extensión', extensions: ['zip'] }],
@@ -654,19 +730,19 @@ ipcMain.handle('ext:pickZip', async (e) => {
   if (res.canceled || !res.filePaths[0]) return null
   return extensions.stageZip(res.filePaths[0])
 })
-ipcMain.handle('ext:installStaged', (_e, token) => extensions.installStaged(token))
-ipcMain.handle('ext:discardStaged', (_e, token) => extensions.discardStaged(token))
+handle('ext:installStaged', (_e, token) => extensions.installStaged(token))
+handle('ext:discardStaged', (_e, token) => extensions.discardStaged(token))
 // Una pestaña de proyecto recibe solo el proyecto que se está viendo (sin permiso `projects`).
 const extContext = (projectId) =>
   projectId ? { project: publicProject(findProject(projects(), projectId)) } : {}
 
-ipcMain.handle('ext:render', (_e, id, viewId, projectId) =>
+handle('ext:render', (_e, id, viewId, projectId) =>
   extensions.render(id, viewId, extContext(projectId))
 )
-ipcMain.handle('ext:action', (_e, id, viewId, actionId, args, projectId) =>
+handle('ext:action', (_e, id, viewId, actionId, args, projectId) =>
   extensions.action(id, viewId, actionId, args, extContext(projectId))
 )
-ipcMain.handle('ext:reply', (_e, id, value) => {
+handle('ext:reply', (_e, id, value) => {
   prompts.get(id)?.(value ?? null)
   prompts.delete(id)
 })
