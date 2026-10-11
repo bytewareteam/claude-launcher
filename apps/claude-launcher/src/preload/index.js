@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   projects: invoke('projects:list'),
   addProject: invoke('project:add'),
   renameProject: invoke('project:rename'),
+  setProjectBoard: invoke('project:setBoard'),
   removeProject: invoke('project:remove'),
   pickRepo: invoke('repo:pick'),
   addRepo: invoke('repo:add'),

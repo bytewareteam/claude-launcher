@@ -161,6 +161,15 @@ ipcMain.handle('project:rename', (_e, id, name) =>
   updateProjects((list) => (findProject(list, id).name = name))
 )
 
+// Extensión de tablero (Jira, Azure Boards…) cuyas pestañas muestra el proyecto; null la quita.
+ipcMain.handle('project:setBoard', (_e, id, extId) =>
+  updateProjects((list) => {
+    const p = findProject(list, id)
+    if (extId) p.board = String(extId)
+    else delete p.board
+  })
+)
+
 ipcMain.handle('project:remove', (_e, id) =>
   store.set(
     'projects',

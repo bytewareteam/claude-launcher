@@ -73,7 +73,8 @@ function readManifest(dir, source) {
     permissions: normalizePermissions(cl.permissions),
     views: viewsOf(cl.views),
     projectTabs: viewsOf(cl.projectTabs),
-    repoSources: viewsOf(cl.repoSources)
+    repoSources: viewsOf(cl.repoSources),
+    board: boardOf(cl.board)
   }
 }
 
@@ -85,6 +86,11 @@ const viewsOf = (list) =>
     title: String(v.title || v.id),
     icon: v.icon
   }))
+
+// Con `board`, la extensión es un tablero: sus `projectTabs` solo salen en los proyectos que lo
+// conectan, para que Jira, Azure Boards… no se mezclen en el mismo proyecto.
+const boardOf = (b) =>
+  b && typeof b === 'object' ? { title: String(b.title || ''), icon: b.icon } : null
 
 // Descubre las extensiones instaladas (y las del repo en desarrollo). Para recoger cambios,
 // detiene los procesos en marcha: se vuelven a arrancar en la siguiente petición.
@@ -152,6 +158,7 @@ export function list() {
     views: ext.views,
     projectTabs: ext.projectTabs,
     repoSources: ext.repoSources,
+    board: ext.board || null,
     enabled: isEnabled(ext),
     granted: isGranted(ext),
     running: !!ext.proc,

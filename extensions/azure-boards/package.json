@@ -20,6 +20,10 @@
       ],
       "develop": true
     },
+    "board": {
+      "title": "Azure Boards",
+      "icon": "azure"
+    },
     "projectTabs": [
       {
         "id": "dashboard",
