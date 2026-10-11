@@ -17,6 +17,10 @@
       "secrets": true,
       "develop": true
     },
+    "board": {
+      "title": "Jira",
+      "icon": "kanban"
+    },
     "projectTabs": [
       {
         "id": "jira",

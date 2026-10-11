@@ -62,7 +62,12 @@ export default function App() {
       />
       <main className="min-w-0 overflow-y-auto px-7 py-6">
         {project ? (
-          <ProjectView key={project.id} project={project} onRemoved={() => setSelectedId(null)} />
+          <ProjectView
+            key={project.id}
+            project={project}
+            onRemoved={() => setSelectedId(null)}
+            onOpenExtensions={() => setSelectedId('extensions')}
+          />
         ) : extView ? (
           <ExtensionView key={extView.key} extension={extView.extension} view={extView.view} />
         ) : activeId === 'settings' ? (

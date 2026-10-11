@@ -58,6 +58,7 @@ catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a ex
     },
     "views": [{ "id": "principal", "title": "Mi vista", "icon": "puzzle" }],
     "projectTabs": [{ "id": "board", "title": "Board", "icon": "kanban" }],
+    "board": { "title": "Mi tablero", "icon": "kanban" },
     "repoSources": [{ "id": "principal", "title": "Mi servicio", "icon": "cloud" }]
   }
 }
@@ -75,6 +76,11 @@ Cada vista de `views` aparece en la barra lateral; cada una de `projectTabs`, co
 pantalla de cada proyecto. Ambas se registran igual con `ctx.views.register`. Una pestaña de
 proyecto recibe en `render(context)` y `action(id, args, context)` el proyecto que se está viendo:
 `context.project = { id, name, repos: [{ id, name, path }] }` (no hace falta el permiso `projects`).
+
+Con `board`, la extensión es un **tablero** (Jira, Azure Boards…): sus `projectTabs` no salen en
+todos los proyectos, sino solo en los que lo eligen con el botón *Conectar tablero* de la pantalla
+del proyecto. Cada proyecto conecta como mucho un tablero, así que no se mezclan. `title` e `icon`
+(opcionales) son los que se muestran en ese menú; por defecto, `displayName`.
 
 Cada entrada de `repoSources` apunta a una vista registrada (puede ser la misma de `views`) y
 añade «Clonar desde *title*…» al botón *Añadir repositorio* de cada proyecto. La vista se abre en

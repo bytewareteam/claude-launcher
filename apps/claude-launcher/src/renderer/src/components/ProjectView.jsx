@@ -1,6 +1,17 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, FolderOpen, FolderPlus, KeyRound, RefreshCw, Trash2 } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  FolderOpen,
+  FolderPlus,
+  KeyRound,
+  Puzzle,
+  RefreshCw,
+  SquareKanban,
+  Trash2,
+  Unplug
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +38,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
@@ -40,15 +52,20 @@ import { extIcon } from '@/lib/extIcons'
 import { useAction, useExtensions, useVars } from '@/lib/queries'
 import { useRememberedOpen } from '@/lib/useRememberedOpen'
 
-export function ProjectView({ project, onRemoved }) {
+export function ProjectView({ project, onRemoved, onOpenExtensions }) {
   const qc = useQueryClient()
   const removeProject = useAction(() => api.removeProject(project.id), { onSuccess: onRemoved })
   const { data: extensions = [] } = useExtensions()
-  // Pestañas que añaden las extensiones activas (p. ej. el board de Azure DevOps).
   const enabled = extensions.filter((e) => e.enabled)
-  const extTabs = enabled.flatMap((e) =>
-    (e.projectTabs ?? []).map((v) => ({ key: `${e.id}/${v.id}`, extension: e, view: v }))
-  )
+  // Los tableros (Jira, Azure Boards…) solo añaden pestañas al proyecto que los conecta: uno por
+  // proyecto, para que no se mezclen. El resto de extensiones las añaden a todos.
+  const boards = enabled.filter((e) => e.board)
+  const board = boards.find((e) => e.id === project.board)
+  const extTabs = enabled
+    .filter((e) => !e.board || e === board)
+    .flatMap((e) =>
+      (e.projectTabs ?? []).map((v) => ({ key: `${e.id}/${v.id}`, extension: e, view: v }))
+    )
   // Extensiones de repositorios remotos (GitHub, Azure DevOps…) desde las que clonar.
   const repoSources = enabled.flatMap((e) =>
     (e.repoSources ?? []).map((v) => ({ key: `${e.id}/${v.id}`, extension: e, view: v }))
@@ -77,6 +94,15 @@ export function ProjectView({ project, onRemoved }) {
               </Button>
             </>
           )}
+          <BoardButton
+            project={project}
+            boards={boards}
+            current={board}
+            onConnected={(ext) =>
+              ext.projectTabs?.[0] && setTab(`${ext.id}/${ext.projectTabs[0].id}`)
+            }
+            onOpenExtensions={onOpenExtensions}
+          />
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" className="text-destructive">
@@ -225,6 +251,56 @@ function AddRepoButton({ project, sources }) {
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+const boardTitle = (ext) => ext.board.title || ext.displayName
+
+// Conecta el proyecto con uno de los tableros instalados (o lo cambia o desconecta). Lo que cada
+// extensión enlaza dentro (proyecto de Jira, equipo de Azure…) lo guarda ella: al volver a
+// conectarla se recupera.
+function BoardButton({ project, boards, current, onConnected, onOpenExtensions }) {
+  const setBoard = useAction((ext) => api.setProjectBoard(project.id, ext?.id ?? null), {
+    onSuccess: (_res, ext) => ext && onConnected(ext)
+  })
+  const CurrentIcon = current ? extIcon(current.board.icon) : SquareKanban
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline">
+          <CurrentIcon /> {current ? boardTitle(current) : 'Conectar tablero'} <ChevronDown />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-56">
+        <DropdownMenuLabel>{current ? 'Cambiar tablero' : 'Conectar con…'}</DropdownMenuLabel>
+        {!boards.length && (
+          <p className="text-muted-foreground px-2 py-1.5 text-sm">No hay tableros instalados.</p>
+        )}
+        {boards.map((ext) => {
+          const Icon = extIcon(ext.board.icon)
+          return (
+            <DropdownMenuItem
+              key={ext.id}
+              disabled={ext === current}
+              onSelect={() => setBoard.mutate(ext)}
+            >
+              <Icon /> {boardTitle(ext)}
+              {ext === current && <Check className="ml-auto" />}
+            </DropdownMenuItem>
+          )
+        })}
+        <DropdownMenuSeparator />
+        {current && (
+          <DropdownMenuItem onSelect={() => setBoard.mutate(null)}>
+            <Unplug /> Desconectar tablero
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onSelect={onOpenExtensions}>
+          <Puzzle /> Buscar tableros en Extensiones…
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
