@@ -4,11 +4,6 @@
   "private": true,
   "license": "MIT",
   "author": "Willian Monoga",
-  "workspaces": [
-    "apps/*",
-    "packages/*",
-    "extensions/*"
-  ],
   "scripts": {
     "dev": "nx run claude-launcher:dev",
     "build": "nx run-many -t build",
@@ -18,5 +13,6 @@
     "@nx/js": "23.3.0",
     "fflate": "^0.8.3",
     "nx": "23.3.0"
-  }
+  },
+  "packageManager": "pnpm@11.5.1"
 }

@@ -14,7 +14,7 @@ Claude Launcher es una app de escritorio **Electron** (solo Windows por ahora) q
 
 ## Monorepo
 
-Monorepo con **Nx** + **npm workspaces**. Instala siempre desde la raíz.
+Monorepo con **Nx** + **pnpm workspaces** (`pnpm-workspace.yaml`). Instala siempre desde la raíz.
 
 ```
 apps/claude-launcher/   La app Electron (proyecto Nx `claude-launcher`).
@@ -25,24 +25,28 @@ packages/               Librerías compartidas.
 nx.json                 Targets por defecto y configuración de Nx Release.
 ```
 
-Nx infiere los targets de los scripts de cada `package.json`. Para añadir una librería: crea `packages/<nombre>/package.json` y dependela desde la app con `"<nombre>": "*"`.
+Nx infiere los targets de los scripts de cada `package.json`. Para añadir una librería: crea `packages/<nombre>/package.json` y dependela desde la app con `"<nombre>": "workspace:*"`.
 
 ## Comandos (desde la raíz)
 
 ```bash
-npm install                              # instala todo el workspace
-npm run dev                              # app en modo desarrollo (HMR en el renderer)
-npm run build                            # compila todos los proyectos
-npx nx run claude-launcher:package       # .exe portable en apps/claude-launcher/dist/
-npx nx run claude-launcher:package:all   # instalador NSIS + portable
-npx nx run ext-<nombre>:package          # .zip de una extensión en extensions/<nombre>/dist/
-npx nx release --skip-publish --dry-run  # simula la próxima release
-npx nx run web:dev                       # web en local (http://localhost:4321/claude-launcher/)
+pnpm install                             # instala todo el workspace
+pnpm dev                                 # app en modo desarrollo (HMR en el renderer)
+pnpm build                               # compila todos los proyectos
+pnpm nx run claude-launcher:package      # .exe portable en apps/claude-launcher/dist/
+pnpm nx run claude-launcher:package:all  # instalador NSIS + portable
+pnpm nx run ext-<nombre>:package         # .zip de una extensión en extensions/<nombre>/dist/
+pnpm nx release --skip-publish --dry-run # simula la próxima release
+pnpm nx run web:dev                      # web en local (http://localhost:4321/claude-launcher/)
 ```
 
-No hay tests ni linter configurados. Para verificar un cambio: `npm run build` debe terminar sin errores y la app debe arrancar con `npm run dev`.
+No hay tests ni linter configurados. Para verificar un cambio: `pnpm build` debe terminar sin errores y la app debe arrancar con `pnpm dev`.
 
-`electron` está fijado a una versión exacta en `apps/claude-launcher/package.json`: electron-builder lo exige porque npm lo instala en el `node_modules` de la raíz.
+`electron` está fijado a una versión exacta en `apps/claude-launcher/package.json`: electron-builder lo exige para saber qué versión empaquetar.
+
+No uses `nodeLinker: hoisted`: con él `pnpm list` falla en Windows (EMFILE) y electron-builder no puede recopilar las dependencias al empaquetar.
+
+pnpm solo ejecuta los scripts de instalación de los paquetes listados en `allowBuilds` (`pnpm-workspace.yaml`): si añades una dependencia que descarga un binario al instalarse, apruébala ahí.
 
 ## Commits y releases
 
@@ -64,19 +68,19 @@ Los commits siguen **[Conventional Commits](https://www.conventionalcommits.org/
 3. Cuando sea estable, PR `release/1.5` → `main` con **merge commit**, nunca squash: Nx calcula la versión y el changelog a partir de cada commit; un squash los reduce a uno.
 4. La siguiente rama de release se crea desde `main` actualizado, que ya lleva el commit `chore(release)` y los tags.
 
-Antes del PR a `main`, comprueba qué saldría desde la rama de release: `npx nx release --skip-publish --dry-run`.
+Antes del PR a `main`, comprueba qué saldría desde la rama de release: `pnpm nx release --skip-publish --dry-run`.
 
 **Un worktree por tarea.** No cambies de rama ni edites en la copia principal del repo: cada tarea se trabaja en su propio `git worktree`, así varias tareas (o agentes) no se pisan los cambios.
 
 ```bash
 git fetch origin
 git worktree add ../claude-launcher-worktrees/<rama> -b <rama> origin/release/1.5
-cd ../claude-launcher-worktrees/<rama> && npm install
+cd ../claude-launcher-worktrees/<rama> && pnpm install
 # … trabajo, commits, push y PR a release/1.5 …
 git worktree remove ../claude-launcher-worktrees/<rama>   # cuando se fusione la PR
 ```
 
-Si en vez de `npm install` enlazas el `node_modules` de la copia principal con una unión de directorio (`cmd //c mklink /J <worktree>\node_modules <copia-principal>\node_modules`, también el de cada workspace), **quita las uniones antes de borrar el worktree**: `cmd //c rmdir <worktree>\node_modules` (no borra el destino). `git worktree remove` las recorre y vacía el `node_modules` de la copia principal, y puede llevarse también sus archivos versionados. Si pasa, recupéralos en la copia principal con `git restore . && npm install`.
+Si en vez de `pnpm install` enlazas el `node_modules` de la copia principal con una unión de directorio (`cmd //c mklink /J <worktree>\node_modules <copia-principal>\node_modules`, también el de cada workspace), **quita las uniones antes de borrar el worktree**: `cmd //c rmdir <worktree>\node_modules` (no borra el destino). `git worktree remove` las recorre y vacía el `node_modules` de la copia principal, y puede llevarse también sus archivos versionados. Si pasa, recupéralos en la copia principal con `git restore . && pnpm install`.
 
 En cada push a `main`, `.github/workflows/release.yml` ejecuta `nx release` con dos grupos (`nx.json`):
 
@@ -90,7 +94,7 @@ Después, `.github/workflows/pages.yml` regenera el catálogo `extensions.json` 
 - Astro estático con `base: '/claude-launcher'`: los enlaces internos usan `import.meta.env.BASE_URL`.
 - Estilos desde `@claude-launcher/design-tokens/theme.css`: no definas colores ni radios propios; si hace falta uno nuevo, añádelo a `packages/design-tokens/tokens.js` para que lo compartan app y web.
 - `.github/workflows/pages.yml` la publica en https://bytewareteam.github.io/claude-launcher/ en cada push a `main` que toque `apps/web/` o `packages/design-tokens/`.
-- `cookie@^2` es dependencia directa de la web a propósito: sin ella npm iza la `cookie@0.7` de express (vía shadcn) y el build de Astro falla.
+- `cookie@^2` es dependencia directa de la web a propósito: sin ella se iza la `cookie@0.7` de express (vía shadcn) y el build de Astro falla.
 
 ## Arquitectura de la app
 

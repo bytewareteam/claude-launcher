@@ -14,7 +14,7 @@ ninguna: el usuario las instala desde la pantalla *Extensiones*.
   lo avisa antes de confirmar.
 - Todas se instalan en `%APPDATA%/claude-launcher/extensions/<name>/` y solo se activan tras aceptar
   sus permisos. Si una actualización cambia los permisos, vuelve a pedirlos.
-- En desarrollo (`npm run dev`) la app también carga las de esta carpeta, marcadas como
+- En desarrollo (`pnpm dev`) la app también carga las de esta carpeta, marcadas como
   *desarrollo*. Tras editarlas, pulsa **Recargar**.
 
 ## Publicar una extensión
@@ -29,9 +29,9 @@ Cada carpeta de `extensions/` es un proyecto Nx (`ext-<name>`) con versión prop
    la privada al secret y la pública a `CATALOG_PUBLIC_KEY` de
    `apps/claude-launcher/src/main/extension-packages.js`.
 
-Para generar el `.zip` en local: `npx nx run ext-<name>:package` (queda en `dist/`). Para probar un
+Para generar el `.zip` en local: `pnpm nx run ext-<name>:package` (queda en `dist/`). Para probar un
 catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a extensions.json>`; en
-desarrollo (`npm run dev`) se admite sin `.sig`, pero si lo tiene debe ser válido.
+desarrollo (`pnpm dev`) se admite sin `.sig`, pero si lo tiene debe ser válido.
 
 ## Modelo de seguridad
 
