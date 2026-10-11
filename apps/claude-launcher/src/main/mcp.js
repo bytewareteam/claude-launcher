@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'crypto'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { z } from 'zod'
+import { TAB_TITLE } from './terminal'
 
 // Servidor MCP local: deja que una sesión de Claude Code consulte proyectos, repos y worktrees y
 // pida acciones a la app. Solo escucha en 127.0.0.1 y exige el token de la configuración.
@@ -142,7 +143,12 @@ function buildServer(app, version) {
         'en uno de sus worktrees, con las variables de la bóveda de ese repo si está desbloqueada.',
       inputSchema: {
         path: z.string().describe('Ruta del repo o de uno de sus worktrees'),
-        title: z.string().max(100).optional().describe('Título de la pestaña')
+        title: z
+          .string()
+          .max(100)
+          .regex(TAB_TITLE, 'El título solo admite letras, números, espacios y _ . : / @ # ( ) [ ] + , -')
+          .optional()
+          .describe('Título de la pestaña')
       },
       annotations: { openWorldHint: false }
     },
