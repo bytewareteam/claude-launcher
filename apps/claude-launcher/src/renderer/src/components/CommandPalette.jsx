@@ -50,9 +50,11 @@ export function CommandPalette({ open, onOpenChange, projects, onSelect, onNewPr
     (worktrees[i]?.data ?? []).map((wt) => ({ project, repo, wt, title: `${repo.name}:${wtLabel(wt)}` }))
   )
 
+  // Últimas sesiones: una por id de sesión (las antiguas, sin id, una por carpeta).
+  const sessionKey = (l) => l.sessionId ?? l.dir
   const recent = []
   for (const l of data?.launches ?? []) {
-    if (!recent.some((r) => r.dir === l.dir)) recent.push(l)
+    if (!recent.some((r) => sessionKey(r) === sessionKey(l))) recent.push(l)
     if (recent.length === 10) break
   }
   const projectName = (id) => projects.find((p) => p.id === id)?.name
@@ -131,14 +133,15 @@ export function CommandPalette({ open, onOpenChange, projects, onSelect, onNewPr
           <CommandGroup heading="Sesiones recientes">
             {recent.map((l) => (
               <CommandItem
-                key={l.dir}
-                value={`session:${l.dir} ${l.title} ${projectName(l.projectId) ?? ''}`}
+                key={sessionKey(l)}
+                value={`session:${sessionKey(l)} ${l.dir} ${l.title} ${projectName(l.projectId) ?? ''}`}
                 keywords={[l.dir]}
                 onSelect={run(() =>
                   launch(
                     l.dir,
                     l.title,
-                    l.projectId && projectName(l.projectId) ? { projectId: l.projectId, repoId: l.repoId } : undefined
+                    l.projectId && projectName(l.projectId) ? { projectId: l.projectId, repoId: l.repoId } : undefined,
+                    { resume: true, sessionId: l.sessionId }
                   )
                 )}
               >
