@@ -16,3 +16,12 @@ export function whichWin(cmd, extraDirs = []) {
 export const CMD_UNSAFE = /["%!^&|<>\r\n]/
 
 export const isScript = (file) => /\.(cmd|bat)$/i.test(file)
+
+// cmd.exe busca los ejecutables en la carpeta actual antes que en PATH: un `npm.cmd` o `claude.cmd`
+// en la raíz de un repo se ejecutaría en lugar del real. Con esta variable no lo hace, y la heredan
+// los .cmd que lance (npm.cmd llama a `node`).
+export const NO_CWD_EXE = { NoDefaultCurrentDirectoryInExePath: '1' }
+
+// cmd.exe por ruta absoluta: spawn con `cwd` también buscaría `cmd.exe` primero en esa carpeta.
+export const comspec = () =>
+  process.env.COMSPEC || join(process.env.SYSTEMROOT || 'C:\\Windows', 'System32', 'cmd.exe')

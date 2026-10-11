@@ -2,6 +2,7 @@ import { exec } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync } from 'fs'
 import { basename, dirname, join } from 'path'
 import { gitPath } from './git'
+import { NO_CWD_EXE, whichWin } from './which'
 
 // «Iniciar desarrollo»: worktree nuevo desde la rama principal, dependencias instaladas y Claude
 // abierto en modo plan con el elemento de trabajo (historia, tarea o bug) como contexto.
@@ -40,11 +41,21 @@ export function installCommand(dir) {
 export function install(dir) {
   const cmd = installCommand(dir)
   if (!cmd) return Promise.resolve(null)
+  // El worktree puede venir de una rama ajena: el gestor se resuelve en PATH, nunca en `dir`.
+  const [bin, ...args] = cmd.split(' ')
+  const file = whichWin(bin)
+  if (!file) return Promise.reject(new Error(`No se encuentra «${bin}» en el PATH.`))
   return new Promise((resolve, reject) => {
-    // Comando fijo de la lista: la shell solo resuelve npm.cmd, pnpm.cmd…
+    // Comando fijo de la lista con ruta absoluta; la shell hace falta para los .cmd (npm, pnpm…).
     exec(
-      cmd,
-      { cwd: dir, timeout: 20 * 60_000, windowsHide: true, maxBuffer: 50 * 1024 * 1024 },
+      [`"${file}"`, ...args].join(' '),
+      {
+        cwd: dir,
+        env: { ...process.env, ...NO_CWD_EXE },
+        timeout: 20 * 60_000,
+        windowsHide: true,
+        maxBuffer: 50 * 1024 * 1024
+      },
       (err, stdout, stderr) => {
         if (!err) return resolve(cmd)
         const tail = (stderr || stdout || err.message).trim().split(/\r?\n/).slice(-15).join('\n')

@@ -2,7 +2,7 @@ import { spawn } from 'child_process'
 import { existsSync, readdirSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { whichWin } from './which'
+import { NO_CWD_EXE, comspec, whichWin } from './which'
 
 // Únicas variables del sistema que hereda la terminal: las que Windows, git,
 // node y la propia shell necesitan para funcionar, más la configuración de red.
@@ -69,11 +69,13 @@ export function openClaude(
   const wtArgs = ['-w', newWindow ? 'new' : '0', 'nt', '-d', dir, '--title', title, 'claude', ...claudeArgs]
   const child = spawn('wt.exe', wtArgs, { env, detached: true, stdio: 'ignore' })
   child.on('error', () => {
-    // Fallback sin Windows Terminal.
+    // Fallback sin Windows Terminal. `dir` es el repo: cmd.exe por ruta absoluta y sin buscar
+    // `claude` en la carpeta actual, que recibiría los secretos de la bóveda.
     const line = claudeArgs.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')
-    spawn('cmd.exe', ['/c', `start "" cmd /k claude ${line}`.trim()], {
+    const cmd = comspec()
+    spawn(cmd, ['/c', `start "" "${cmd}" /k claude ${line}`.trim()], {
       cwd: dir,
-      env,
+      env: { ...env, ...NO_CWD_EXE },
       detached: true,
       stdio: 'ignore',
       windowsVerbatimArguments: true
