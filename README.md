@@ -59,6 +59,10 @@ Tus datos se guardan en `%APPDATA%\claude-launcher\` (`data.json` y `secrets.kdb
 
 Nx · Electron · electron-vite · React 19 · Tailwind CSS v4 · shadcn/ui · TanStack Query · kdbxweb
 
+## Apoyar el proyecto
+
+Claude Launcher es gratis y de código abierto. Si te resulta útil, puedes invitarme a un café en [Buy Me a Coffee](https://buymeacoffee.com/wmonoga) ☕
+
 ## Contribuir
 
 Lee [AGENTS.md](AGENTS.md) para la arquitectura y las convenciones del código.
