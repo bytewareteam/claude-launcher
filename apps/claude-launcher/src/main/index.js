@@ -27,6 +27,7 @@ import * as dev from './dev'
 import * as ide from './ide'
 import * as extensions from './extensions'
 import * as mcp from './mcp'
+import { writeSecret } from './clipboard'
 import icon from '../../resources/icon.png?asset'
 
 // Misma carpeta de datos en desarrollo y en la app instalada
@@ -524,9 +525,9 @@ handle('vault:get', (_e, scope, id) => vault.getValue(resolveScope(scope), id))
 handle('vault:set', (_e, scope, key, value) => vault.setVars(resolveScope(scope), [{ key, value }]))
 handle('vault:delete', (_e, scope, id) => vault.deleteVar(resolveScope(scope), id))
 
-handle('vault:copy', (_e, scope, id) => {
+handle('vault:copy', async (_e, scope, id) => {
   const value = vault.getValue(resolveScope(scope), id)
-  clipboard.writeText(value)
+  await writeSecret(value)
   // Limpia el portapapeles pasado el plazo configurado si sigue conteniendo el secreto.
   setTimeout(() => {
     if (clipboard.readText() === value) clipboard.clear()
