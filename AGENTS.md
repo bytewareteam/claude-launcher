@@ -76,6 +76,8 @@ cd ../claude-launcher-worktrees/<rama> && npm install
 git worktree remove ../claude-launcher-worktrees/<rama>   # cuando se fusione la PR
 ```
 
+Si en vez de `npm install` enlazas el `node_modules` de la copia principal con una unión de directorio (`cmd //c mklink /J <worktree>\node_modules <copia-principal>\node_modules`, también el de cada workspace), **quita las uniones antes de borrar el worktree**: `cmd //c rmdir <worktree>\node_modules` (no borra el destino). `git worktree remove` las recorre y vacía el `node_modules` de la copia principal, y puede llevarse también sus archivos versionados. Si pasa, recupéralos en la copia principal con `git restore . && npm install`.
+
 En cada push a `main`, `.github/workflows/release.yml` ejecuta `nx release` con dos grupos (`nx.json`):
 
 - **app**: sube la versión de `apps/claude-launcher/package.json`, actualiza `CHANGELOG.md`, crea el tag `vX.Y.Z` y la release de GitHub con el `.exe` portable adjunto.

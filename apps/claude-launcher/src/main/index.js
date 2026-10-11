@@ -176,8 +176,15 @@ function createWindow() {
     autoHideMenuBar: true,
     icon,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js')
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true
     }
+  })
+  // La ventana nunca sale de su página: los enlaces https van al navegador y el resto se descarta.
+  win.webContents.on('will-navigate', (e) => e.preventDefault())
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
   })
   win.on('ready-to-show', () => win.show())
   if (devRendererUrl()) win.loadURL(devRendererUrl())
