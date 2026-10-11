@@ -77,9 +77,9 @@ pantalla de cada proyecto. Ambas se registran igual con `ctx.views.register`. Un
 proyecto recibe en `render(context)` y `action(id, args, context)` el proyecto que se está viendo:
 `context.project = { id, name, repos: [{ id, name, path }] }` (no hace falta el permiso `projects`).
 
-Con `board`, la extensión es un **tablero** (Jira, Azure Boards…): sus `projectTabs` no salen en
-todos los proyectos, sino solo en los que lo eligen con el botón *Conectar tablero* de la pantalla
-del proyecto. Cada proyecto conecta como mucho un tablero, así que no se mezclan. `title` e `icon`
+Con `board`, la extensión es un **tablero** (Jira, Azure Boards, GitHub Projects…): sus
+`projectTabs` no salen en todos los proyectos, sino solo en los que lo eligen con el botón
+*Conectar tablero* de la pantalla del proyecto. Cada proyecto conecta como mucho un tablero, así que no se mezclan. `title` e `icon`
 (opcionales) son los que se muestran en ese menú; por defecto, `displayName`.
 
 Cada entrada de `repoSources` apunta a una vista registrada (puede ser la misma de `views`) y
@@ -180,4 +180,5 @@ con `" % ! ^ & | < >` o saltos de línea, que cmd.exe interpretaría.
 `console.log` y los errores van al **Registro** de la extensión (pantalla *Extensiones*).
 
 Ejemplos completos: [`github/`](github/index.js), [`azure-devops/`](azure-devops/index.js),
-[`bitbucket/`](bitbucket/index.js), [`azure-boards/`](azure-boards/index.js) y [`jira/`](jira/index.js) (pestañas de proyecto).
+[`bitbucket/`](bitbucket/index.js), [`azure-boards/`](azure-boards/index.js), [`jira/`](jira/index.js) y
+[`github-projects/`](github-projects/index.js) (tableros con pestañas de proyecto).
