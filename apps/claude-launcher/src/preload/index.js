@@ -88,6 +88,7 @@ contextBridge.exposeInMainWorld('api', {
     reply: invoke('ext:reply'),
     onChanged: on('ext:changed'),
     onToast: on('ext:toast'),
-    onQuickPick: on('ext:quickPick')
+    onQuickPick: on('ext:quickPick'),
+    onInput: on('ext:input')
   }
 })
