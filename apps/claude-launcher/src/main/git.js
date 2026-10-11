@@ -1,10 +1,11 @@
 import { execFile } from 'child_process'
-import { normalize } from 'path'
+import { normalize, resolve } from 'path'
 import { existsSync } from 'fs'
+import { resolveBin } from './which'
 
 function git(args, cwd) {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd, windowsHide: true }, (err, stdout, stderr) => {
+    execFile(resolveBin('git') || 'git', args, { cwd, windowsHide: true }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr.trim() || err.message))
       else resolve(stdout)
     })
@@ -74,8 +75,17 @@ export async function remoteWebUrl(repoPath) {
   return `https://${host}/${path}`
 }
 
+// Rama base (p. ej. origin/develop). Sin `-` inicial ni `..`: git la tomaría por una opción
+// (`--output=…` escribe un archivo) o por un rango.
+export function checkBaseBranch(base) {
+  if (typeof base !== 'string' || !/^[\w][\w./-]*$/.test(base) || base.includes('..'))
+    throw new Error('La rama base solo admite letras, números y los caracteres _ . / -')
+  return base
+}
+
 // Qué se perdería al borrar un worktree: cambios sin commitear y commits que no están en la rama base.
 export async function worktreeStatus(wtPath, base) {
+  checkBaseBranch(base)
   if (!existsSync(wtPath)) return { missing: true }
   const lines = (s) => s.split(/\r?\n/).filter(Boolean)
   const dirty = lines(await git(['status', '--porcelain'], wtPath))
@@ -118,4 +128,45 @@ export async function repoSummary(repoPath) {
   } catch (err) {
     return { error: err.message }
   }
+}
+
+// Rama por defecto del remoto (origin/HEAD → origin/main), o null si no se conoce.
+export async function defaultRemoteBranch(repoPath) {
+  try {
+    return (await git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], repoPath)).trim() || null
+  } catch {
+    return null
+  }
+}
+
+// Nombres de rama que admite la app: los de git, pero solo con caracteres que no interpretan ni
+// Windows Terminal ni cmd.exe (el nombre acaba en el título de la pestaña).
+export async function checkBranchName(repoPath, branch) {
+  if (!/^[\w./-]+$/.test(branch))
+    throw new Error('La rama solo admite letras, números y los caracteres _ . / -')
+  try {
+    await git(['check-ref-format', '--branch', branch], repoPath)
+  } catch {
+    throw new Error(`«${branch}» no es un nombre de rama válido.`)
+  }
+}
+
+// Crea un worktree en `wtPath` con la rama `branch`. Si la rama ya existe se reutiliza; si no, se
+// crea desde `base` (actualizada antes con un fetch) sin seguirla: `git push` no debe ir a la base.
+export async function addWorktree(repoPath, wtPath, branch, base) {
+  const exists = await git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], repoPath).then(
+    () => true,
+    () => false
+  )
+  if (exists) return git(['worktree', 'add', wtPath, branch], repoPath)
+  const remotes = (await git(['remote'], repoPath)).split(/\r?\n/).filter(Boolean)
+  const remote = remotes.find((r) => base.startsWith(`${r}/`))
+  // Sin red se sigue con lo que haya en local.
+  if (remote) await git(['fetch', remote, base.slice(remote.length + 1)], repoPath).catch(() => {})
+  return git(['worktree', 'add', '--no-track', '-b', branch, wtPath, base], repoPath)
+}
+
+// Ruta de un archivo de git del repo (p. ej. info/exclude, común a todos los worktrees).
+export async function gitPath(dir, path) {
+  return resolve(dir, (await git(['rev-parse', '--git-path', path], dir)).trim())
 }

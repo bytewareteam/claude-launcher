@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { Kdbx, Credentials, ProtectedValue, CryptoEngine, Consts, VarDictionary, Int64 } from 'kdbxweb';
 import { argon2d, argon2id } from 'hash-wasm';
+import { isProtectedVar } from './terminal';
 
 CryptoEngine.setArgon2Impl(async (password, salt, memory, iterations, length, parallelism, type) => {
   const fn = type === 2 ? argon2id : argon2d; // 0 = Argon2d, 2 = Argon2id
@@ -21,17 +22,21 @@ CryptoEngine.setArgon2Impl(async (password, salt, memory, iterations, length, pa
 });
 
 const ROOT_NAME = 'Claude Launcher';
-const AUTO_LOCK_MS = 15 * 60 * 1000;
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+// Las entradas pueden crearse o editarse fuera de la app (KeePassXC): se valida al guardar y al
+// inyectar.
+const usableKey = (key) => ENV_KEY.test(key) && !isProtectedVar(key);
 
 let db = null;
 let dbPath = null;
 let lockTimer = null;
 let onLock = () => {};
+let autoLockMs = 15 * 60 * 1000;
 
 function touch() {
   clearTimeout(lockTimer);
-  lockTimer = setTimeout(() => lock({ auto: true }), AUTO_LOCK_MS);
+  lockTimer = setTimeout(() => lock({ auto: true }), autoLockMs);
 }
 
 function requireUnlocked() {
@@ -140,7 +145,10 @@ export function listVars(scope) {
   const group = scopeGroup(scope, false);
   if (!group) return [];
   return group.entries
-    .map((e) => ({ id: e.uuid.id, key: fieldText(e, 'Title') }))
+    .map((e) => {
+      const key = fieldText(e, 'Title');
+      return { id: e.uuid.id, key, ignored: !usableKey(key) };
+    })
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 
@@ -160,6 +168,9 @@ export async function setVars(scope, vars) {
   requireUnlocked();
   for (const { key } of vars) {
     if (!ENV_KEY.test(key)) throw new Error(`Nombre de variable no válido: ${key}`);
+    if (isProtectedVar(key)) {
+      throw new Error(`${key} es una variable reservada del sistema: no se puede guardar en la bóveda.`);
+    }
   }
   const group = scopeGroup(scope, true);
   for (const { key, value } of vars) {
@@ -188,10 +199,20 @@ export function envFor(projectScope, repoScope) {
   const env = {};
   for (const scope of [projectScope, repoScope].filter(Boolean)) {
     const group = scopeGroup(scope, false);
-    for (const e of group?.entries || []) env[fieldText(e, 'Title')] = fieldText(e, 'Password');
+    for (const e of group?.entries || []) {
+      const key = fieldText(e, 'Title');
+      if (usableKey(key)) env[key] = fieldText(e, 'Password');
+      else console.warn(`Variable de la bóveda ignorada: ${JSON.stringify(key)}`);
+    }
   }
   return env;
 }
 
 export const isUnlocked = () => !!db;
 export const setOnLock = (fn) => (onLock = fn);
+
+// Cambia el autobloqueo; si está abierta, el nuevo plazo cuenta desde ahora.
+export function setAutoLockMinutes(minutes) {
+  autoLockMs = minutes * 60 * 1000;
+  if (db) touch();
+}

@@ -10,6 +10,7 @@ import {
   Globe,
   Layers,
   LayoutDashboard,
+  Play,
   Link,
   ListTodo,
   Lock,
@@ -22,18 +23,23 @@ import {
   User,
   Users
 } from 'lucide-react'
+import { Bitbucket, ClaudeIcon, GithubIcon, MicrosoftAzure } from './brandIcons'
 
 // Iconos que pueden usar las extensiones por nombre. Lista cerrada: así no se empaqueta
 // todo lucide. Si una extensión necesita otro, añádelo aquí y documéntalo.
 const ICONS = {
   'arrow-left': ArrowLeft,
+  azure: MicrosoftAzure,
+  bitbucket: Bitbucket,
   bug: Bug,
   calendar: Calendar,
+  claude: ClaudeIcon,
   cloud: Cloud,
   download: Download,
   'external-link': ExternalLink,
   folder: Folder,
   'git-branch': GitBranch,
+  github: GithubIcon,
   globe: Globe,
   kanban: SquareKanban,
   layers: Layers,
@@ -41,6 +47,7 @@ const ICONS = {
   link: Link,
   'list-todo': ListTodo,
   lock: Lock,
+  play: Play,
   plus: Plus,
   puzzle: Puzzle,
   refresh: RefreshCw,

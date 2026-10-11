@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
-import { FolderGit2, FolderKanban, GitBranch, History, House, Plus, Terminal } from 'lucide-react'
+import { FolderGit2, FolderKanban, GitBranch, History, House, Plus } from 'lucide-react'
 import {
   CommandDialog,
   CommandEmpty,
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/command'
 import { wtLabel } from '@/components/WorktreeSection'
 import { api } from '@/lib/api'
+import { ClaudeIcon } from '@/lib/brandIcons'
 import { useDashboard } from '@/lib/queries'
 import { useLaunch } from '@/lib/useLaunch'
 import { timeAgo } from '@/lib/format'
@@ -49,9 +50,11 @@ export function CommandPalette({ open, onOpenChange, projects, onSelect, onNewPr
     (worktrees[i]?.data ?? []).map((wt) => ({ project, repo, wt, title: `${repo.name}:${wtLabel(wt)}` }))
   )
 
+  // Últimas sesiones: una por id de sesión (las antiguas, sin id, una por carpeta).
+  const sessionKey = (l) => l.sessionId ?? l.dir
   const recent = []
   for (const l of data?.launches ?? []) {
-    if (!recent.some((r) => r.dir === l.dir)) recent.push(l)
+    if (!recent.some((r) => sessionKey(r) === sessionKey(l))) recent.push(l)
     if (recent.length === 10) break
   }
   const projectName = (id) => projects.find((p) => p.id === id)?.name
@@ -130,21 +133,22 @@ export function CommandPalette({ open, onOpenChange, projects, onSelect, onNewPr
           <CommandGroup heading="Sesiones recientes">
             {recent.map((l) => (
               <CommandItem
-                key={l.dir}
-                value={`session:${l.dir} ${l.title} ${projectName(l.projectId) ?? ''}`}
+                key={sessionKey(l)}
+                value={`session:${sessionKey(l)} ${l.dir} ${l.title} ${projectName(l.projectId) ?? ''}`}
                 keywords={[l.dir]}
                 onSelect={run(() =>
                   launch(
                     l.dir,
                     l.title,
-                    l.projectId && projectName(l.projectId) ? { projectId: l.projectId, repoId: l.repoId } : undefined
+                    l.projectId && projectName(l.projectId) ? { projectId: l.projectId, repoId: l.repoId } : undefined,
+                    { resume: true, sessionId: l.sessionId }
                   )
                 )}
               >
                 <History />
                 <span className="truncate">{l.title}</span>
                 <CommandShortcut className="flex items-center gap-1 tracking-normal">
-                  <Terminal className="size-3" /> {timeAgo(l.at)}
+                  <ClaudeIcon className="size-3" /> {timeAgo(l.at)}
                 </CommandShortcut>
               </CommandItem>
             ))}

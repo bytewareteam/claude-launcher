@@ -4,7 +4,7 @@ import { ProjectView } from '@/components/ProjectView'
 import { Home } from '@/components/Home'
 import { CommandPalette } from '@/components/CommandPalette'
 import { ExtensionView } from '@/components/ExtensionView'
-import { ExtensionsPage } from '@/components/ExtensionsPage'
+import { SettingsPage } from '@/components/SettingsPage'
 import { Onboarding } from '@/components/Onboarding'
 import { useExtensions, useOnboardingPending, useProjects } from '@/lib/queries'
 
@@ -16,10 +16,13 @@ const readSelected = () => {
   }
 }
 
+// 'extensions' era la página del gestor antes de Configuración: abre su pestaña.
+const SETTINGS_IDS = ['settings', 'extensions']
+
 export default function App() {
   const { data: projects = [] } = useProjects()
   const { data: extensions = [] } = useExtensions()
-  // null = inicio; 'extensions' = gestor; 'ext:<id>/<vista>' = vista de una extensión.
+  // null = inicio; 'settings' = configuración; 'ext:<id>/<vista>' = vista de una extensión.
   const [selectedId, setSelectedId] = useState(readSelected)
   const [searchOpen, setSearchOpen] = useState(false)
   const [newProjectOpen, setNewProjectOpen] = useState(false)
@@ -31,7 +34,7 @@ export default function App() {
     .flatMap((e) => e.views.map((v) => ({ key: `ext:${e.id}/${v.id}`, extension: e, view: v })))
   const extView = extViews.find((v) => v.key === selectedId)
   const activeId =
-    project?.id ?? extView?.key ?? (selectedId === 'extensions' ? 'extensions' : null)
+    project?.id ?? extView?.key ?? (SETTINGS_IDS.includes(selectedId) ? 'settings' : null)
 
   useEffect(() => {
     try {
@@ -59,11 +62,16 @@ export default function App() {
       />
       <main className="min-w-0 overflow-y-auto px-7 py-6">
         {project ? (
-          <ProjectView key={project.id} project={project} onRemoved={() => setSelectedId(null)} />
+          <ProjectView
+            key={project.id}
+            project={project}
+            onRemoved={() => setSelectedId(null)}
+            onOpenExtensions={() => setSelectedId('extensions')}
+          />
         ) : extView ? (
           <ExtensionView key={extView.key} extension={extView.extension} view={extView.view} />
-        ) : activeId === 'extensions' ? (
-          <ExtensionsPage />
+        ) : activeId === 'settings' ? (
+          <SettingsPage initialTab={selectedId === 'extensions' ? 'extensions' : undefined} />
         ) : (
           <Home projects={projects} onSelect={setSelectedId} onTutorial={() => setTutorialOpen(true)} />
         )}

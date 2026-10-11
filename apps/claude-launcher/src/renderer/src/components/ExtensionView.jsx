@@ -53,15 +53,16 @@ const TONE_BADGE = {
 
 // Pinta la vista que devuelve una extensión (JSON, ver extensions/README.md). Ningún código
 // de la extensión llega al renderer: solo datos que se muestran con nuestros componentes.
-// Con projectId es una pestaña dentro de ProjectView: sin título propio.
-export function ExtensionView({ extension, view, projectId = null }) {
+// Con projectId es una pestaña dentro de ProjectView: sin título propio. onResult recibe lo que
+// devuelve cada acción (p. ej. `{ close: true }` para cerrar el diálogo de «Añadir repositorio»).
+export function ExtensionView({ extension, view, projectId = null, onResult }) {
   const { data, error, isPending, isFetching, refetch } = useExtensionView(
     extension.id,
     view.id,
     projectId
   )
   const [detail, setDetail] = useState(null)
-  const ctx = { extId: extension.id, viewId: view.id, projectId, openDetail: setDetail }
+  const ctx = { extId: extension.id, viewId: view.id, projectId, openDetail: setDetail, onResult }
   const spinner = isFetching && !isPending && (
     <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
   )
@@ -635,7 +636,12 @@ function FilterCombobox({ label, all = 'Todos', options, value, onChange }) {
 function ActionButton({ action, ctx, variant, small }) {
   const run = useAction(
     () => api.extensions.action(ctx.extId, ctx.viewId, action.id, action.args, ctx.projectId),
-    { onSuccess: (res) => res?.toast && toast.success(res.toast) }
+    {
+      onSuccess: (res) => {
+        if (res?.toast) toast.success(res.toast)
+        ctx.onResult?.(res)
+      }
+    }
   )
   const Icon = run.isPending ? LoaderCircle : extIcon(action.icon)
 

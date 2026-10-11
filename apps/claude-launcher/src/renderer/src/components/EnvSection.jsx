@@ -8,6 +8,7 @@ import { useAskVault } from '@/components/VaultProvider'
 import { api, errMsg } from '@/lib/api'
 import { useAction, useVars, useVaultStatus } from '@/lib/queries'
 import { useRememberedOpen } from '@/lib/useRememberedOpen'
+import { cn } from '@/lib/utils'
 
 export function EnvSection({ id, scope, label }) {
   const [open, toggle] = useRememberedOpen(`env:${id}`)
@@ -25,7 +26,7 @@ export function EnvSection({ id, scope, label }) {
   )
 }
 
-function EnvPanel({ scope }) {
+export function EnvPanel({ scope }) {
   const { data: vault } = useVaultStatus()
   const askVault = useAskVault()
   const { data: vars = [] } = useVars(scope)
@@ -73,7 +74,15 @@ function EnvRow({ scope, variable }) {
 
   return (
     <li className="grid grid-cols-[minmax(120px,220px)_1fr_auto] items-center gap-3 rounded-md bg-secondary px-3 py-1.5">
-      <span className="truncate font-mono text-sm font-semibold">{variable.key}</span>
+      <span
+        className={cn(
+          'truncate font-mono text-sm font-semibold',
+          variable.ignored && 'text-muted-foreground line-through'
+        )}
+        title={variable.ignored ? 'No se inyecta: nombre no válido o reservado por el sistema' : undefined}
+      >
+        {variable.key}
+      </span>
       <span className="truncate font-mono text-sm text-muted-foreground select-text">{value ?? '••••••••'}</span>
       <div className="flex gap-1">
         <Button size="icon-sm" variant="ghost" title={value === null ? 'Ver' : 'Ocultar'} onClick={toggle}>

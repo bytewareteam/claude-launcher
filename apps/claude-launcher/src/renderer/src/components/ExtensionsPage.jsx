@@ -33,12 +33,19 @@ export function permissionLines(p) {
   if (p.exec?.length) lines.push(`Ejecutar programas: ${p.exec.join(', ')}`)
   if (p.projects) lines.push('Ver tus proyectos y añadirles repositorios')
   if (p.dialogs) lines.push('Abrir diálogos para elegir carpetas')
+  if (p.develop) lines.push('Proponerte crear worktrees y abrir Claude Code con un contexto')
+  if (p.secrets) lines.push('Guardar sus propias credenciales cifradas (no ve la bóveda)')
   return lines
 }
 
+// Los datos solo se conservan entre versiones del catálogo: un .zip puede llamarse como cualquiera.
+const WIPES_DATA =
+  'Se borrarán las credenciales y datos que guardó la versión instalada: solo se conservan al actualizar desde el catálogo.'
+
 const installed = (r) => toast.success(`${r.displayName} v${r.version} instalada`)
 
-export function ExtensionsPage() {
+// embedded: dentro de Configuración, con un título secundario.
+export function ExtensionsPage({ embedded = false }) {
   const { data: extensions = [] } = useExtensions()
   const catalog = useExtensionCatalog()
   const entries = catalog.data ?? []
@@ -74,7 +81,11 @@ export function ExtensionsPage() {
     <section>
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Extensiones</h1>
+          {embedded ? (
+            <h2 className="text-lg font-semibold">Extensiones</h2>
+          ) : (
+            <h1 className="text-2xl font-semibold">Extensiones</h1>
+          )}
           <p className="text-sm text-muted-foreground">
             Añaden vistas y acciones a la app. Cada una corre en su propio proceso, sin acceso a la
             bóveda.
@@ -148,10 +159,13 @@ export function ExtensionsPage() {
           open
           onOpenChange={(open) => !open && finishStaged(false)}
           title={`¿Instalar «${staged.displayName}» v${staged.version}?`}
-          note={
+          note={[
             staged.installedVersion &&
-            `Sustituye a la versión ${staged.installedVersion} que tienes instalada.`
-          }
+              `Sustituye a la versión ${staged.installedVersion} que tienes instalada.`,
+            staged.wipesData && WIPES_DATA
+          ]
+            .filter(Boolean)
+            .join(' ')}
           permissions={staged.permissions}
           confirmLabel="Instalar"
           onConfirm={() => finishStaged(true)}
@@ -244,6 +258,7 @@ function InstalledCard({ ext, entry }) {
           open={consent === 'update'}
           onOpenChange={(open) => !open && setConsent(null)}
           title={`¿Actualizar «${ext.displayName}» a v${entry.version}?`}
+          note={entry.wipesData && WIPES_DATA}
           permissions={entry.permissions}
           confirmLabel="Actualizar"
           onConfirm={() => update.mutate()}

@@ -1,4 +1,4 @@
-// Fuente única de los design tokens. `npm run build` genera tokens.css y theme.css a partir
+// Fuente única de los design tokens. `pnpm build` genera tokens.css y theme.css a partir
 // de este objeto: edita aquí y regenera, nunca los .css a mano.
 
 // Solo tema oscuro; primario con el naranja de Claude.

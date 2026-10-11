@@ -35,20 +35,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
-      # El workspace npm instala electron; su binario no hace falta para la web.
-      - run: npm ci
+      # El workspace instala electron; su binario no hace falta para la web.
+      - run: pnpm install --frozen-lockfile
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
-      - run: npx nx run web:build
+      - run: pnpm exec nx run web:build
 
       # Índice de la última versión publicada de cada extensión: lo lee la app.
+      # Firmado con la clave privada del secret; la pública va dentro de la app.
       - run: node scripts/extensions.mjs catalog apps/web/dist/extensions.json
+        env:
+          CATALOG_SIGNING_KEY: ${{ secrets.CATALOG_SIGNING_KEY }}
 
       - uses: actions/upload-pages-artifact@v5
         with:

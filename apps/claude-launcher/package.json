@@ -15,14 +15,17 @@
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "cn": "^0.2.6",
     "dotenv": "^18.0.7",
     "fflate": "^0.8.3",
     "hash-wasm": "^4.12.0",
-    "kdbxweb": "^2.1.1"
+    "kdbxweb": "^2.1.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@claude-launcher/design-tokens": "*",
+    "@claude-launcher/design-tokens": "workspace:*",
+    "@dev.icons/react": "1.1.0",
     "@tailwindcss/vite": "^4.1.0",
     "@tanstack/react-query": "^5.90.0",
     "@vitejs/plugin-react": "^5.1.1",

@@ -1,0 +1,24 @@
+{
+  "name": "bitbucket",
+  "displayName": "Bitbucket",
+  "version": "0.0.0",
+  "description": "Lista los repositorios de tus workspaces de Bitbucket Cloud o proyectos de Bitbucket Data Center (vía bkt) y clónalos donde quieras.",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "package": "node ../../scripts/extensions.mjs pack ."
+  },
+  "nx": {
+    "name": "ext-bitbucket"
+  },
+  "claudeLauncher": {
+    "apiVersion": 1,
+    "permissions": {
+      "exec": ["bkt"],
+      "projects": true,
+      "dialogs": true
+    },
+    "views": [{ "id": "repos", "title": "Bitbucket", "icon": "bitbucket" }],
+    "repoSources": [{ "id": "repos", "title": "Bitbucket", "icon": "bitbucket" }]
+  }
+}

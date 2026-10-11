@@ -19,6 +19,7 @@ App de escritorio para organizar tus proyectos y repositorios, guardar sus secre
 
 - Windows 10/11
 - [Node.js](https://nodejs.org) 20 o superior
+- [pnpm](https://pnpm.io) (`corepack enable` lo activa con la versión de `packageManager`)
 - [Git](https://git-scm.com)
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) instalado y disponible como `claude` en el `PATH`
 - [Windows Terminal](https://aka.ms/terminal) (recomendado; si no está, usa `cmd`)
@@ -28,22 +29,22 @@ App de escritorio para organizar tus proyectos y repositorios, guardar sus secre
 ```bash
 git clone https://github.com/bytewareteam/claude-launcher.git
 cd claude-launcher
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 ### Generar el ejecutable
 
 ```bash
-npx nx run claude-launcher:package       # solo portable
-npx nx run claude-launcher:package:all   # instalador NSIS + portable
+pnpm nx run claude-launcher:package      # solo portable
+pnpm nx run claude-launcher:package:all  # instalador NSIS + portable
 ```
 
 Se genera en `apps/claude-launcher/dist/`.
 
 ## Descargas y versiones
 
-Cada versión publicada está en [Releases](https://github.com/bytewareteam/claude-launcher/releases) con el `.exe` portable (no requiere instalación). Las versiones siguen [semver](https://semver.org/lang/es/) y se publican solas a partir de los mensajes de commit; los cambios están en [CHANGELOG.md](CHANGELOG.md).
+Cada versión publicada está en [Releases](https://github.com/bytewareteam/claude-launcher/releases) con el `.exe` portable (no requiere instalación). Las versiones siguen [semver](https://semver.org/lang/es/) y se publican al integrar una rama `release/*` en `main`, con la versión calculada a partir de los mensajes de commit; los cambios están en [CHANGELOG.md](CHANGELOG.md).
 
 ## Seguridad
 

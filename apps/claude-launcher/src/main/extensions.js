@@ -1,10 +1,12 @@
 // Gestor de extensiones: las instala, guarda qué permisos aceptó el usuario y arranca
 // cada una en su propio utilityProcess (ver extension-host.js).
 import { app, utilityProcess } from 'electron'
+import { execFile } from 'child_process'
 import { randomUUID } from 'crypto'
 import { join, resolve, sep } from 'path'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'fs'
 import { baseEnv } from './terminal'
+import { CMD_UNSAFE, NO_CWD_EXE, isScript, resolveBin, whichWin } from './which'
 import * as packages from './extension-packages'
 
 export const API_VERSION = 1
@@ -15,7 +17,10 @@ const LOG_LINES = 200
 const METHOD_PERMISSION = {
   'projects.list': 'projects',
   'projects.addRepo': 'projects',
-  'ui.pickFolder': 'dialogs'
+  'ui.pickFolder': 'dialogs',
+  'dev.start': 'develop',
+  'secrets.get': 'secrets',
+  'secrets.set': 'secrets'
 }
 
 // La app no trae extensiones: se instalan del catálogo o de un .zip en userDir. En desarrollo
@@ -42,7 +47,10 @@ function normalizePermissions(perms = {}) {
   return {
     exec: Array.isArray(perms.exec) ? perms.exec.map(String) : [],
     projects: !!perms.projects,
-    dialogs: !!perms.dialogs
+    dialogs: !!perms.dialogs,
+    develop: !!perms.develop,
+    // Solo si se pide: así no cambia `grantKey` ni se vuelve a pedir permiso a las que ya están.
+    ...(perms.secrets && { secrets: true })
   }
 }
 
@@ -66,17 +74,25 @@ function readManifest(dir, source) {
     source,
     permissions: normalizePermissions(cl.permissions),
     views: viewsOf(cl.views),
-    projectTabs: viewsOf(cl.projectTabs)
+    projectTabs: viewsOf(cl.projectTabs),
+    repoSources: viewsOf(cl.repoSources),
+    board: boardOf(cl.board)
   }
 }
 
-// Vistas de la barra lateral (`views`) y pestañas de la pantalla de proyecto (`projectTabs`).
+// Vistas de la barra lateral (`views`), pestañas de la pantalla de proyecto (`projectTabs`) y
+// orígenes desde los que clonar al pulsar «Añadir repositorio» (`repoSources`).
 const viewsOf = (list) =>
   (Array.isArray(list) ? list : []).map((v) => ({
     id: String(v.id),
     title: String(v.title || v.id),
     icon: v.icon
   }))
+
+// Con `board`, la extensión es un tablero: sus `projectTabs` solo salen en los proyectos que lo
+// conectan, para que Jira, Azure Boards… no se mezclen en el mismo proyecto.
+const boardOf = (b) =>
+  b && typeof b === 'object' ? { title: String(b.title || ''), icon: b.icon } : null
 
 // Descubre las extensiones instaladas (y las del repo en desarrollo). Para recoger cambios,
 // detiene los procesos en marcha: se vuelven a arrancar en la siguiente petición.
@@ -97,7 +113,7 @@ export function scan() {
       } catch (err) {
         const id = `${source}:${d.name}`
         ext = { id, displayName: d.name, dir, source, invalid: err.message, views: [], log: [] }
-        ext.projectTabs = []
+        ext.projectTabs = ext.repoSources = []
         ext.permissions = normalizePermissions()
       }
       if (extensions.has(ext.id))
@@ -143,6 +159,8 @@ export function list() {
     permissions: ext.permissions,
     views: ext.views,
     projectTabs: ext.projectTabs,
+    repoSources: ext.repoSources,
+    board: ext.board || null,
     enabled: isEnabled(ext),
     granted: isGranted(ext),
     running: !!ext.proc,
@@ -156,7 +174,15 @@ export const logOf = (id) => get(id).log.join('')
 
 // Catálogo con el estado local de cada entrada.
 export async function catalog(force) {
-  const entries = await packages.fetchCatalog(force)
+  const { generatedAt, signed, entries } = await packages.fetchCatalog(force)
+  // Un catálogo firmado pero anterior al último aceptado sería una vuelta atrás (p. ej. para
+  // reinstalar una versión vulnerable): se rechaza.
+  if (signed) {
+    const last = store.get('catalogGeneratedAt', 0)
+    if (generatedAt < last)
+      throw new Error('El catálogo de extensiones es anterior al último recibido.')
+    if (generatedAt > last) store.set('catalogGeneratedAt', generatedAt)
+  }
   return entries.map((e) => {
     const installed = extensions.get(e.name)
     return {
@@ -164,9 +190,35 @@ export async function catalog(force) {
       permissions: normalizePermissions(e.permissions),
       compatible: e.apiVersion === API_VERSION,
       installedVersion: installed?.version ?? null,
-      update: !!installed && packages.compareVersions(e.version, installed.version) > 0
+      update: !!installed && packages.compareVersions(e.version, installed.version) > 0,
+      wipesData: wipesData(e.name, 'catalog')
     }
   })
+}
+
+// --- Origen y datos guardados -------------------------------------------------------
+
+// Origen de la extensión instalada: 'catalog' o 'zip'. Las instaladas antes de guardarlo
+// solo podían actualizarse desde el catálogo sin perder datos, así que cuentan como catálogo.
+const originOf = (id) =>
+  extensions.get(id)?.source === 'user' ? (states()[id]?.origin ?? 'catalog') : null
+
+const hasData = (id) =>
+  ['extensionData', 'extensionSecrets'].some(
+    (key) => Object.keys(store.get(key, {})[id] ?? {}).length > 0
+  )
+
+// Los datos (y credenciales) de una extensión solo pasan a otra con su mismo nombre si ambas
+// vienen del catálogo firmado: un .zip puede llamarse igual que cualquier extensión.
+const keepsData = (id, origin) => origin === 'catalog' && originOf(id) === 'catalog'
+const wipesData = (id, origin) => !keepsData(id, origin) && hasData(id)
+
+function clearData(id) {
+  for (const key of ['extensionData', 'extensionSecrets']) {
+    const data = store.get(key, {})
+    delete data[id]
+    store.set(key, data)
+  }
 }
 
 // Paquetes extraídos que esperan a que el usuario acepte sus permisos.
@@ -186,14 +238,15 @@ function stage(zip) {
   }
 }
 
+// Solo tokens emitidos por stage(): el token forma parte de la ruta que se borra.
 function discard(token) {
-  staged.delete(token)
+  if (!staged.delete(token)) return
   rmSync(join(stagingDir(), token), { recursive: true, force: true })
 }
 
 // Mueve el paquete a userDir (sustituyendo la versión anterior) y lo activa con los
-// permisos que el usuario acaba de aceptar.
-function commit(token) {
+// permisos que el usuario acaba de aceptar. origin: 'catalog' | 'zip'.
+function commit(token, origin) {
   const manifest = staged.get(token)
   if (!manifest) throw new Error('La instalación ha caducado. Vuelve a intentarlo.')
   const current = extensions.get(manifest.id)
@@ -203,10 +256,11 @@ function commit(token) {
   }
   staged.delete(token)
   if (current) stop(current)
+  if (!keepsData(manifest.id, origin)) clearData(manifest.id)
   const dest = join(userDir(), manifest.id)
   rmSync(dest, { recursive: true, force: true, maxRetries: 5 })
   renameSync(manifest.dir, dest)
-  setState(manifest.id, { enabled: true, grant: grantKey(manifest) })
+  setState(manifest.id, { enabled: true, grant: grantKey(manifest), origin })
   scan()
   return { id: manifest.id, displayName: manifest.displayName, version: manifest.version }
 }
@@ -225,7 +279,7 @@ export async function installFromCatalog(name) {
     discard(token)
     throw new Error(`El paquete de «${entry.displayName}» no coincide con el catálogo.`)
   }
-  return commit(token)
+  return commit(token, 'catalog')
 }
 
 // Instalar desde un .zip va en dos pasos: el usuario ve los permisos antes de confirmar.
@@ -238,11 +292,12 @@ export function stageZip(path) {
     version: manifest.version,
     description: manifest.description,
     permissions: manifest.permissions,
-    installedVersion: extensions.get(manifest.id)?.version ?? null
+    installedVersion: extensions.get(manifest.id)?.version ?? null,
+    wipesData: wipesData(manifest.id, 'zip')
   }
 }
 
-export const installStaged = (token) => commit(token)
+export const installStaged = (token) => commit(token, 'zip')
 export const discardStaged = (token) => discard(token)
 
 export function uninstall(id) {
@@ -252,9 +307,7 @@ export function uninstall(id) {
   stop(ext)
   rmSync(ext.dir, { recursive: true, force: true, maxRetries: 5 })
   setState(id, null)
-  const data = store.get('extensionData', {})
-  delete data[id]
-  store.set('extensionData', data)
+  clearData(id)
   scan()
 }
 
@@ -271,14 +324,24 @@ function appendLog(ext, text) {
   if (ext.log.length > LOG_LINES) ext.log.splice(0, ext.log.length - LOG_LINES)
 }
 
+// Modelo de permisos de Node: la extensión solo lee su carpeta y el código del host, sin
+// escribir, lanzar procesos ni Workers. Electron ignora `execArgv` en utilityProcess, pero
+// respeta NODE_OPTIONS. Dentro de comillas, NODE_OPTIONS trata `\` como escape.
+function sandboxOptions(ext) {
+  const quote = (p) => `"${p.replace(/\\/g, '\\\\')}"`
+  const readable = [ext.dir, __dirname].map((d) => `--allow-fs-read=${quote(d)}`)
+  return ['--permission', ...readable].join(' ')
+}
+
 function start(ext) {
   if (ext.ready) return ext.ready
   ext.error = null
   ext.calls = new Map()
+  ext.children = new Set()
   ext.nextId = 0
   const proc = utilityProcess.fork(join(__dirname, 'extension-host.js'), [], {
     // Mismo entorno mínimo que la terminal: nada de tokens sueltos del sistema.
-    env: baseEnv(),
+    env: { ...baseEnv(), NODE_OPTIONS: sandboxOptions(ext) },
     cwd: ext.dir,
     stdio: 'pipe',
     serviceName: `Extensión ${ext.id}`
@@ -310,7 +373,59 @@ function stop(ext) {
   const proc = ext.proc
   ext.proc = ext.ready = null
   for (const c of ext.calls?.values() ?? []) c.reject(new Error('La extensión se detuvo.'))
+  for (const child of ext.children ?? []) child.kill()
   proc?.kill()
+}
+
+// `ctx.exec`: el proceso de la extensión no puede lanzar programas, así que lo hace el principal
+// y solo con los que el usuario aceptó en el manifest.
+function exec(ext, cmd, args = [], { cwd, timeout = 60_000, env } = {}) {
+  cmd = String(cmd)
+  if (!ext.permissions.exec.includes(cmd))
+    throw new Error(`La extensión no tiene permiso para ejecutar «${cmd}».`)
+  args = (Array.isArray(args) ? args : []).map(String)
+  let file = cmd
+  let shell = false
+  if (process.platform === 'win32') {
+    const found = whichWin(cmd)
+    if (!found) throw Object.assign(new Error(`No se encuentra «${cmd}».`), { code: 'ENOENT' })
+    if (isScript(found)) {
+      if (args.some((a) => CMD_UNSAFE.test(a)))
+        throw new Error(`Argumento no admitido para «${cmd}» (es un script .cmd).`)
+      // La línea se monta aquí (no con args + shell, obsoleto en Node): ya está validada.
+      const quote = (a) => (/[\s,;=]/.test(a) ? `"${a}"` : a)
+      file = [`"${found}"`, ...args.map(quote)].join(' ')
+      args = []
+      shell = resolveBin('cmd')
+    }
+  }
+  // `env` se suma al entorno mínimo, como el que tenía el proceso de la extensión.
+  const extra = env && typeof env === 'object' ? env : {}
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      file,
+      args,
+      {
+        cwd: cwd ? String(cwd) : ext.dir,
+        timeout: Number(timeout) || 60_000,
+        shell,
+        env: {
+          ...baseEnv(),
+          ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, String(v)])),
+          // `cwd` suele ser un repo: cmd.exe no debe ejecutar sus binarios.
+          ...NO_CWD_EXE
+        },
+        windowsHide: true,
+        maxBuffer: 50 * 1024 * 1024
+      },
+      (err, stdout, stderr) => {
+        ext.children?.delete(child)
+        if (!err) return resolve(stdout)
+        reject(Object.assign(new Error(stderr.trim() || err.message), { code: err.code }))
+      }
+    )
+    ext.children?.add(child)
+  })
 }
 
 function call(ext, method, ...params) {
@@ -343,11 +458,12 @@ async function onMessage(ext, msg) {
     const perm = METHOD_PERMISSION[msg.method]
     if (perm && !ext.permissions[perm])
       throw new Error(`La extensión no tiene el permiso «${perm}».`)
-    const fn = hostApi[msg.method]
+    const fn = msg.method === 'exec' ? exec : hostApi[msg.method]
     if (!fn) throw new Error(`Método desconocido: ${msg.method}`)
     reply({ result: (await fn(ext, ...msg.params)) ?? null })
   } catch (err) {
-    reply({ error: String(err?.message || err) })
+    const code = typeof err?.code === 'string' || typeof err?.code === 'number' ? err.code : null
+    reply({ error: String(err?.message || err), code })
   }
 }
 

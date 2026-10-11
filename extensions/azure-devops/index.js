@@ -1,6 +1,5 @@
 // Extensión de Azure DevOps: usa la sesión de Azure CLI (`az login`), así que no guarda tokens.
 // Solo pide a `az` un token de acceso; el resto son llamadas a la API REST de Azure DevOps.
-const { existsSync } = require('fs')
 const { join } = require('path')
 
 // Id de recurso de Azure DevOps en Microsoft Entra ID (fijo para todos los tenants).
@@ -133,11 +132,12 @@ exports.activate = (ctx) => {
       }
     },
 
-    async action(id, args) {
+    // Desde «Añadir repositorio» de un proyecto llega `context.project`: se clona en él.
+    async action(id, args, context) {
       if (id === 'refresh') return
       if (id === 'open') return ctx.ui.openExternal(args.url)
       if (id === 'org') return chooseOrg()
-      if (id === 'clone') return clone(args)
+      if (id === 'clone') return clone(args, context.project)
     }
   })
 
@@ -151,7 +151,7 @@ exports.activate = (ctx) => {
     if (org) await ctx.storage.set('org', org)
   }
 
-  async function clone({ name, project, url }) {
+  async function clone({ name, project, url }, target) {
     const parent = await ctx.ui.pickFolder({
       title: `¿Dónde clonar ${project}/${name}?`,
       defaultPath: await ctx.storage.get('cloneDir')
@@ -159,7 +159,6 @@ exports.activate = (ctx) => {
     if (!parent) return
     await ctx.storage.set('cloneDir', parent)
     const dest = join(parent, name)
-    if (existsSync(dest)) throw new Error(`Ya existe ${dest}`)
     // El token va por entorno (no en la línea de comandos ni en .git/config): solo vale para
     // este clone. Los fetch/push posteriores usan el gestor de credenciales de git.
     await ctx.exec('git', ['clone', url, dest], {
@@ -171,6 +170,11 @@ exports.activate = (ctx) => {
         GIT_CONFIG_VALUE_0: `Authorization: Bearer ${await token()}`
       }
     })
+
+    if (target) {
+      await ctx.projects.addRepo(target.id, dest)
+      return { toast: `${name} clonado y añadido a ${target.name}.`, close: true }
+    }
 
     const projects = await ctx.projects.list()
     const projectId = await ctx.ui.quickPick(

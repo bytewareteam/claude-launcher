@@ -36,8 +36,30 @@ export const useWorktreeStatus = (wtPath, base, enabled) =>
     staleTime: 0
   })
 
+// IDEs instalados y el elegido por el usuario (null = el primero de la lista).
+export const useIdes = () => useQuery({ queryKey: ['ides'], queryFn: api.ide.list })
+
 export const useOnboardingPending = () =>
   useQuery({ queryKey: ['onboarding'], queryFn: api.onboarding.pending, staleTime: Infinity })
+
+export const useSettings = () => useQuery({ queryKey: ['settings'], queryFn: api.settings.get })
+
+// Estado del servidor MCP; arranca de forma asíncrona, así que se reconsulta al poco.
+export const useMcpStatus = () =>
+  useQuery({
+    queryKey: ['mcp'],
+    queryFn: api.mcp.status,
+    refetchInterval: ({ state: { data } }) =>
+      data && data.enabled && !data.running && !data.error ? 1000 : false
+  })
+
+// Opciones de `claude --help`; no cambian mientras la app está abierta.
+export const useClaudeOptions = () =>
+  useQuery({
+    queryKey: ['claude-options'],
+    queryFn: api.settings.claudeOptions,
+    staleTime: Infinity
+  })
 
 export const useDashboard = () => useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard })
 

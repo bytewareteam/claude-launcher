@@ -1,5 +1,6 @@
-import { AlertTriangle, Clock, FolderGit2, GitBranch, GraduationCap, Terminal } from 'lucide-react'
+import { AlertTriangle, Clock, FolderGit2, GitBranch, GraduationCap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ClaudeIcon } from '@/lib/brandIcons'
 import { useDashboard } from '@/lib/queries'
 import { plural, timeAgo } from '@/lib/format'
 import { useLaunch } from '@/lib/useLaunch'
@@ -51,10 +52,11 @@ export function Home({ projects, onSelect, onTutorial }) {
     })
     .sort((a, b) => (b.lastActivity ?? '').localeCompare(a.lastActivity ?? ''))
 
-  // Últimas sesiones, una por carpeta.
+  // Últimas sesiones: una por id de sesión (las antiguas, sin id, una por carpeta).
+  const sessionKey = (l) => l.sessionId ?? l.dir
   const recent = []
   for (const l of launches) {
-    if (!recent.some((r) => r.dir === l.dir)) recent.push(l)
+    if (!recent.some((r) => sessionKey(r) === sessionKey(l))) recent.push(l)
     if (recent.length === 5) break
   }
   const projectName = (id) => projects.find((p) => p.id === id)?.name
@@ -88,7 +90,7 @@ export function Home({ projects, onSelect, onTutorial }) {
           <h2 className="mb-2 text-xs tracking-widest text-muted-foreground uppercase">Sesiones recientes</h2>
           <ul className="flex flex-col gap-1">
             {recent.map((l) => (
-              <li key={l.dir} className="flex items-center justify-between gap-3 rounded-md bg-card px-3 py-2">
+              <li key={sessionKey(l)} className="flex items-center justify-between gap-3 rounded-md bg-card px-3 py-2">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{l.title}</div>
                   <div className="truncate text-xs text-muted-foreground">
@@ -99,10 +101,15 @@ export function Home({ projects, onSelect, onTutorial }) {
                   size="sm"
                   variant="outline"
                   onClick={() =>
-                    launch(l.dir, l.title, l.projectId && projectName(l.projectId) ? { projectId: l.projectId, repoId: l.repoId } : undefined)
+                    launch(
+                      l.dir,
+                      l.title,
+                      l.projectId && projectName(l.projectId) ? { projectId: l.projectId, repoId: l.repoId } : undefined,
+                      { resume: true, sessionId: l.sessionId }
+                    )
                   }
                 >
-                  <Terminal /> Reabrir
+                  <ClaudeIcon /> Reanudar
                 </Button>
               </li>
             ))}
@@ -150,7 +157,7 @@ export function Home({ projects, onSelect, onTutorial }) {
                   <Clock className="size-3.5" /> Último commit: {timeAgo(c.lastCommit) ?? '—'}
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <Terminal className="size-3.5" /> Última sesión: {timeAgo(c.lastLaunch) ?? 'nunca'}
+                  <ClaudeIcon className="size-3.5" /> Última sesión: {timeAgo(c.lastLaunch) ?? 'nunca'}
                 </span>
               </div>
             </button>

@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   projects: invoke('projects:list'),
   addProject: invoke('project:add'),
   renameProject: invoke('project:rename'),
+  setProjectBoard: invoke('project:setBoard'),
   removeProject: invoke('project:remove'),
   pickRepo: invoke('repo:pick'),
   addRepo: invoke('repo:add'),
@@ -25,10 +26,33 @@ contextBridge.exposeInMainWorld('api', {
   worktreeStatus: invoke('worktree:status'),
   removeWorktree: invoke('worktree:remove'),
   openClaude: invoke('open:claude'),
+  openShell: invoke('open:shell'),
   openFolder: invoke('open:folder'),
   openWeb: invoke('open:web'),
+  ide: {
+    list: invoke('ide:list'),
+    setDefault: invoke('ide:setDefault'),
+    open: invoke('ide:open')
+  },
   openUrl: invoke('open:url'),
+  dev: {
+    worktree: invoke('dev:worktree'),
+    install: invoke('dev:install'),
+    open: invoke('dev:open'),
+    cancel: invoke('dev:cancel'),
+    onRequest: on('dev:request')
+  },
   dashboard: invoke('dashboard'),
+  settings: {
+    get: invoke('settings:get'),
+    set: invoke('settings:set'),
+    pickBinary: invoke('settings:pickBinary'),
+    claudeOptions: invoke('claude:options')
+  },
+  mcp: {
+    status: invoke('mcp:status'),
+    regenerateToken: invoke('mcp:regenerateToken')
+  },
   onboarding: {
     pending: invoke('onboarding:pending'),
     done: invoke('onboarding:done')
@@ -39,6 +63,8 @@ contextBridge.exposeInMainWorld('api', {
     unlock: invoke('vault:unlock'),
     lock: invoke('vault:lock'),
     useExisting: invoke('vault:useExisting'),
+    resetPath: invoke('vault:resetPath'),
+    showFile: invoke('vault:showFile'),
     list: invoke('vault:list'),
     get: invoke('vault:get'),
     set: invoke('vault:set'),
@@ -64,6 +90,7 @@ contextBridge.exposeInMainWorld('api', {
     reply: invoke('ext:reply'),
     onChanged: on('ext:changed'),
     onToast: on('ext:toast'),
-    onQuickPick: on('ext:quickPick')
+    onQuickPick: on('ext:quickPick'),
+    onInput: on('ext:input')
   }
 })

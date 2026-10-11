@@ -1,5 +1,8 @@
 import { spawn } from 'child_process'
-import { existsSync } from 'fs'
+import { existsSync, readdirSync } from 'fs'
+import { homedir } from 'os'
+import { join } from 'path'
+import { NO_CWD_EXE, resolveBin } from './which'
 
 // Únicas variables del sistema que hereda la terminal: las que Windows, git,
 // node y la propia shell necesitan para funcionar, más la configuración de red.
@@ -22,28 +25,118 @@ const SYSTEM_VARS = new RegExp(
   'i'
 )
 
+// Nombres que una variable de la bóveda no puede usar: las del sistema (cambiarían PATH, COMSPEC…)
+// y las que hacen que node, y por tanto `claude`, cargue código ajeno.
+export const isProtectedVar = (name) => SYSTEM_VARS.test(name) || /^NODE_OPTIONS$/i.test(name)
+
 // Entorno base (terminal y extensiones): solo lo imprescindible del sistema.
 export function baseEnv() {
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => SYSTEM_VARS.test(k)))
 }
 
+// Argumentos extra de `claude` que admite la configuración. Solo caracteres sin significado
+// para cmd.exe: el fallback los pasa tal cual en una línea de comandos.
+export const CLAUDE_ARGS = /^[\w\s\-=.:/,@]*$/
+
+// Argumentos que añade la propia app (p. ej. el prompt inicial): admiten espacios, pero nada que
+// Windows Terminal (`;`) o cmd.exe interpreten.
+const EXTRA_ARG = /^[^"%!^&|<>;\r\n]*$/
+
+// Título de pestaña: lista blanca sin `;` (separador de subcomandos de Windows Terminal) ni `-`
+// inicial (se leería como opción). Viene de nombres de carpeta, ramas o clientes MCP.
+const TITLE_CHARS = String.raw`\p{L}\p{N} _.:/@#()[\]+,-`
+const TITLE_CHAR = new RegExp(`[^${TITLE_CHARS}]`, 'gu')
+export const TAB_TITLE = new RegExp(`^(?!-)[${TITLE_CHARS}]*$`, 'u')
+export const TAB_TITLE_MAX = 100
+export const TAB_TITLE_ERROR =
+  'El título solo admite letras, números, espacios y _ . : / @ # ( ) [ ] + , - (sin «-» inicial)'
+
+// El título es solo cosmético: se sanea en vez de impedir abrir la pestaña.
+function safeTitle(title) {
+  return String(title ?? '')
+    .replace(TITLE_CHAR, '_')
+    .replace(/^-+/, '')
+    .slice(0, TAB_TITLE_MAX)
+}
+
+// La ruta va a `wt -d`: un `;` partiría el comando (escaparlo con `\` es ambiguo en Windows) y un
+// `-` inicial se leería como opción.
+function assertSafeDir(dir) {
+  if (/[;\r\n]/.test(dir) || dir.startsWith('-'))
+    throw new Error(`La ruta no puede contener «;» ni saltos de línea ni empezar por «-»: ${dir}`)
+  if (!existsSync(dir)) throw new Error(`No existe el directorio: ${dir}`)
+}
+
+// ¿Existe la conversación `id` de Claude Code en `dir` (sin `id`: alguna)? Claude las guarda en
+// `~/.claude/projects/<ruta con todo lo no alfanumérico cambiado por ->/<id>.jsonl` y solo tras el
+// primer mensaje. Reanudar una que no existe sale con error y la pestaña se cierra.
+export function hasClaudeSession(dir, id) {
+  const root = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
+  const folder = join(root, 'projects', dir.replace(/[^a-zA-Z0-9]/g, '-'))
+  try {
+    return readdirSync(folder).some((f) => (id ? f === `${id}.jsonl` : f.endsWith('.jsonl')))
+  } catch {
+    return false
+  }
+}
+
 // Windows Terminal pasa el entorno de quien lo invoca a la pestaña nueva,
 // así los secretos no aparecen en la línea de comandos.
-export function openClaude(dir, title, extraEnv = {}) {
-  if (!existsSync(dir)) throw new Error(`No existe el directorio: ${dir}`)
+export function openClaude(
+  dir,
+  title,
+  extraEnv = {},
+  { args = '', newWindow = false } = {},
+  extraArgs = []
+) {
+  assertSafeDir(dir)
+  title = safeTitle(title)
+  if (!CLAUDE_ARGS.test(args)) throw new Error('Los argumentos de Claude tienen caracteres no permitidos.')
+  if (!extraArgs.every((a) => EXTRA_ARG.test(a))) throw new Error('Argumento de Claude no admitido.')
+  const claude = resolveBin('claude')
+  if (!claude)
+    throw new Error(
+      'No se encuentra Claude Code. Instálalo o indica su ruta en Configuración → Claude → Avanzado.'
+    )
   const env = { ...baseEnv(), ...extraEnv }
-  // Nueva pestaña en la última ventana (crea una si no hay).
-  const wtArgs = ['-w', '0', 'nt', '-d', dir, '--title', title, 'claude']
-  const child = spawn('wt.exe', wtArgs, { env, detached: true, stdio: 'ignore' })
+  const claudeArgs = [...args.split(/\s+/).filter(Boolean), ...extraArgs]
+  // Nueva pestaña en la última ventana (crea una si no hay) o ventana nueva.
+  const wtArgs = ['-w', newWindow ? 'new' : '0', 'nt', '-d', dir, '--title', title, claude, ...claudeArgs]
+  const child = spawn(resolveBin('wt') || 'wt.exe', wtArgs, { env, detached: true, stdio: 'ignore' })
   child.on('error', () => {
-    // Fallback sin Windows Terminal.
-    spawn('cmd.exe', ['/c', 'start "" cmd /k claude'], {
+    // Fallback sin Windows Terminal. `dir` es el repo: cmd.exe por ruta absoluta y sin buscar
+    // `claude` en la carpeta actual, que recibiría los secretos de la bóveda.
+    const line = claudeArgs.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')
+    const cmd = resolveBin('cmd')
+    // /k quita las comillas externas: así la ruta de claude conserva las suyas.
+    spawn(cmd, ['/c', `start "" "${cmd}" /k ""${claude}" ${line}"`], {
       cwd: dir,
-      env,
+      env: { ...env, ...NO_CWD_EXE },
       detached: true,
       stdio: 'ignore',
       windowsVerbatimArguments: true
     }).unref()
+  })
+  child.unref()
+  return title
+}
+
+// Terminal normal (PowerShell 7) en `dir`: entorno completo del usuario y ningún secreto.
+export function openShell(dir, title) {
+  assertSafeDir(dir)
+  title = safeTitle(title)
+  const pwsh = resolveBin('pwsh')
+  if (!pwsh)
+    throw new Error(
+      'No se encuentra PowerShell 7 (pwsh). Instálalo con `winget install Microsoft.PowerShell` o indica su ruta en Configuración → Sistema.'
+    )
+  const child = spawn(resolveBin('wt') || 'wt.exe', ['-w', '0', 'nt', '-d', dir, '--title', title, pwsh], {
+    detached: true,
+    stdio: 'ignore'
+  })
+  child.on('error', () => {
+    // Fallback sin Windows Terminal: consola propia de pwsh.
+    spawn(pwsh, ['-NoExit'], { cwd: dir, detached: true, stdio: 'ignore' }).unref()
   })
   child.unref()
 }

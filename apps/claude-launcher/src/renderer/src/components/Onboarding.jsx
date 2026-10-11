@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Check, FolderGit2, FolderPlus, GitBranch, KeyRound, Puzzle, Search, ShieldPlus, Terminal } from 'lucide-react'
+import { Check, FolderGit2, FolderPlus, GitBranch, KeyRound, Puzzle, Search, ShieldPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { searchShortcut } from '@/components/CommandPalette'
 import { useAskVault } from '@/components/VaultProvider'
 import { api } from '@/lib/api'
+import { ClaudeIcon } from '@/lib/brandIcons'
 import { useAction, useVaultStatus } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import logo from '@claude-launcher/design-tokens/logo.svg'
@@ -102,7 +103,7 @@ function Welcome() {
         <Bullet icon={FolderGit2}>Agrupa tus repositorios git por proyecto.</Bullet>
         <Bullet icon={GitBranch}>Ve sus worktrees y su estado frente a la rama base.</Bullet>
         <Bullet icon={KeyRound}>Guarda secretos en una bóveda KeePass cifrada.</Bullet>
-        <Bullet icon={Terminal}>Abre Claude Code con solo esas variables inyectadas.</Bullet>
+        <Bullet icon={ClaudeIcon}>Abre Claude Code con solo esas variables inyectadas.</Bullet>
       </ul>
     </>
   )
@@ -220,9 +221,9 @@ function VaultStep({ onHide }) {
 
 function LaunchStep() {
   return (
-    <Step icon={Terminal} title="Abre Claude Code" description="Todo listo. Así se usa en el día a día:">
+    <Step icon={ClaudeIcon} title="Abre Claude Code" description="Todo listo. Así se usa en el día a día:">
       <ul className="grid gap-2 text-sm">
-        <Bullet icon={Terminal}>
+        <Bullet icon={ClaudeIcon}>
           Pulsa «Abrir Claude» en un repo o worktree: se abre una pestaña de Windows Terminal con sus variables.
         </Bullet>
         <Bullet icon={Search}>
@@ -231,7 +232,7 @@ function LaunchStep() {
             buscar proyectos y worktrees desde cualquier sitio.
           </span>
         </Bullet>
-        <Bullet icon={Puzzle}>Amplía la app desde «Extensiones» en la barra lateral.</Bullet>
+        <Bullet icon={Puzzle}>Amplía la app desde «Configuración → Extensiones» en la barra lateral.</Bullet>
       </ul>
       <p className="text-xs text-muted-foreground">Puedes volver a ver este tutorial desde la pantalla de inicio.</p>
     </Step>
