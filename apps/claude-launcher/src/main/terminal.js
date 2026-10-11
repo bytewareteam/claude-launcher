@@ -25,6 +25,10 @@ const SYSTEM_VARS = new RegExp(
   'i'
 )
 
+// Nombres que una variable de la bóveda no puede usar: las del sistema (cambiarían PATH, COMSPEC…)
+// y las que hacen que node, y por tanto `claude`, cargue código ajeno.
+export const isProtectedVar = (name) => SYSTEM_VARS.test(name) || /^NODE_OPTIONS$/i.test(name)
+
 // Entorno base (terminal y extensiones): solo lo imprescindible del sistema.
 export function baseEnv() {
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => SYSTEM_VARS.test(k)))
