@@ -172,7 +172,15 @@ export const logOf = (id) => get(id).log.join('')
 
 // Catálogo con el estado local de cada entrada.
 export async function catalog(force) {
-  const entries = await packages.fetchCatalog(force)
+  const { generatedAt, signed, entries } = await packages.fetchCatalog(force)
+  // Un catálogo firmado pero anterior al último aceptado sería una vuelta atrás (p. ej. para
+  // reinstalar una versión vulnerable): se rechaza.
+  if (signed) {
+    const last = store.get('catalogGeneratedAt', 0)
+    if (generatedAt < last)
+      throw new Error('El catálogo de extensiones es anterior al último recibido.')
+    if (generatedAt > last) store.set('catalogGeneratedAt', generatedAt)
+  }
   return entries.map((e) => {
     const installed = extensions.get(e.name)
     return {
@@ -180,9 +188,35 @@ export async function catalog(force) {
       permissions: normalizePermissions(e.permissions),
       compatible: e.apiVersion === API_VERSION,
       installedVersion: installed?.version ?? null,
-      update: !!installed && packages.compareVersions(e.version, installed.version) > 0
+      update: !!installed && packages.compareVersions(e.version, installed.version) > 0,
+      wipesData: wipesData(e.name, 'catalog')
     }
   })
+}
+
+// --- Origen y datos guardados -------------------------------------------------------
+
+// Origen de la extensión instalada: 'catalog' o 'zip'. Las instaladas antes de guardarlo
+// solo podían actualizarse desde el catálogo sin perder datos, así que cuentan como catálogo.
+const originOf = (id) =>
+  extensions.get(id)?.source === 'user' ? (states()[id]?.origin ?? 'catalog') : null
+
+const hasData = (id) =>
+  ['extensionData', 'extensionSecrets'].some(
+    (key) => Object.keys(store.get(key, {})[id] ?? {}).length > 0
+  )
+
+// Los datos (y credenciales) de una extensión solo pasan a otra con su mismo nombre si ambas
+// vienen del catálogo firmado: un .zip puede llamarse igual que cualquier extensión.
+const keepsData = (id, origin) => origin === 'catalog' && originOf(id) === 'catalog'
+const wipesData = (id, origin) => !keepsData(id, origin) && hasData(id)
+
+function clearData(id) {
+  for (const key of ['extensionData', 'extensionSecrets']) {
+    const data = store.get(key, {})
+    delete data[id]
+    store.set(key, data)
+  }
 }
 
 // Paquetes extraídos que esperan a que el usuario acepte sus permisos.
@@ -208,8 +242,8 @@ function discard(token) {
 }
 
 // Mueve el paquete a userDir (sustituyendo la versión anterior) y lo activa con los
-// permisos que el usuario acaba de aceptar.
-function commit(token) {
+// permisos que el usuario acaba de aceptar. origin: 'catalog' | 'zip'.
+function commit(token, origin) {
   const manifest = staged.get(token)
   if (!manifest) throw new Error('La instalación ha caducado. Vuelve a intentarlo.')
   const current = extensions.get(manifest.id)
@@ -219,10 +253,11 @@ function commit(token) {
   }
   staged.delete(token)
   if (current) stop(current)
+  if (!keepsData(manifest.id, origin)) clearData(manifest.id)
   const dest = join(userDir(), manifest.id)
   rmSync(dest, { recursive: true, force: true, maxRetries: 5 })
   renameSync(manifest.dir, dest)
-  setState(manifest.id, { enabled: true, grant: grantKey(manifest) })
+  setState(manifest.id, { enabled: true, grant: grantKey(manifest), origin })
   scan()
   return { id: manifest.id, displayName: manifest.displayName, version: manifest.version }
 }
@@ -241,7 +276,7 @@ export async function installFromCatalog(name) {
     discard(token)
     throw new Error(`El paquete de «${entry.displayName}» no coincide con el catálogo.`)
   }
-  return commit(token)
+  return commit(token, 'catalog')
 }
 
 // Instalar desde un .zip va en dos pasos: el usuario ve los permisos antes de confirmar.
@@ -254,11 +289,12 @@ export function stageZip(path) {
     version: manifest.version,
     description: manifest.description,
     permissions: manifest.permissions,
-    installedVersion: extensions.get(manifest.id)?.version ?? null
+    installedVersion: extensions.get(manifest.id)?.version ?? null,
+    wipesData: wipesData(manifest.id, 'zip')
   }
 }
 
-export const installStaged = (token) => commit(token)
+export const installStaged = (token) => commit(token, 'zip')
 export const discardStaged = (token) => discard(token)
 
 export function uninstall(id) {
@@ -268,11 +304,7 @@ export function uninstall(id) {
   stop(ext)
   rmSync(ext.dir, { recursive: true, force: true, maxRetries: 5 })
   setState(id, null)
-  for (const key of ['extensionData', 'extensionSecrets']) {
-    const data = store.get(key, {})
-    delete data[id]
-    store.set(key, data)
-  }
+  clearData(id)
   scan()
 }
 

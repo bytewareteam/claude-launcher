@@ -38,6 +38,10 @@ export function permissionLines(p) {
   return lines
 }
 
+// Los datos solo se conservan entre versiones del catálogo: un .zip puede llamarse como cualquiera.
+const WIPES_DATA =
+  'Se borrarán las credenciales y datos que guardó la versión instalada: solo se conservan al actualizar desde el catálogo.'
+
 const installed = (r) => toast.success(`${r.displayName} v${r.version} instalada`)
 
 // embedded: dentro de Configuración, con un título secundario.
@@ -155,10 +159,13 @@ export function ExtensionsPage({ embedded = false }) {
           open
           onOpenChange={(open) => !open && finishStaged(false)}
           title={`¿Instalar «${staged.displayName}» v${staged.version}?`}
-          note={
+          note={[
             staged.installedVersion &&
-            `Sustituye a la versión ${staged.installedVersion} que tienes instalada.`
-          }
+              `Sustituye a la versión ${staged.installedVersion} que tienes instalada.`,
+            staged.wipesData && WIPES_DATA
+          ]
+            .filter(Boolean)
+            .join(' ')}
           permissions={staged.permissions}
           confirmLabel="Instalar"
           onConfirm={() => finishStaged(true)}
@@ -251,6 +258,7 @@ function InstalledCard({ ext, entry }) {
           open={consent === 'update'}
           onOpenChange={(open) => !open && setConsent(null)}
           title={`¿Actualizar «${ext.displayName}» a v${entry.version}?`}
+          note={entry.wipesData && WIPES_DATA}
           permissions={entry.permissions}
           confirmLabel="Actualizar"
           onConfirm={() => update.mutate()}

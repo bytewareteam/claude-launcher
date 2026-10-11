@@ -5,8 +5,13 @@ ninguna: el usuario las instala desde la pantalla *Extensiones*.
 
 - **Disponibles**: catálogo publicado en
   `https://bytewareteam.github.io/claude-launcher/extensions.json`. Instalar descarga el `.zip`,
-  comprueba su sha256 y que pide los mismos permisos que muestra el catálogo.
+  comprueba su sha256 y que pide los mismos permisos que muestra el catálogo. El catálogo va firmado
+  (ed25519, `extensions.json.sig`) y la app lo rechaza si la firma no coincide con la clave pública
+  que lleva dentro o si es anterior al último que aceptó.
 - **Instalar desde .zip**: cualquier paquete con `package.json` en la raíz (o en una única carpeta).
+- Las credenciales y datos de una extensión solo se conservan al actualizarla desde el catálogo.
+  Instalar un `.zip` encima de una extensión (o pasar de un `.zip` al catálogo) los borra; la app
+  lo avisa antes de confirmar.
 - Todas se instalan en `%APPDATA%/claude-launcher/extensions/<name>/` y solo se activan tras aceptar
   sus permisos. Si una actualización cambia los permisos, vuelve a pedirlos.
 - En desarrollo (`npm run dev`) la app también carga las de esta carpeta, marcadas como
@@ -19,10 +24,14 @@ Cada carpeta de `extensions/` es un proyecto Nx (`ext-<name>`) con versión prop
 1. Commits con Conventional Commits que toquen solo esa carpeta (`feat(azure-devops): …`).
 2. En el push a `main`, `nx release` sube su versión, escribe su `CHANGELOG.md` y crea el tag
    `ext-<name>-vX.Y.Z` con su release en GitHub; el workflow adjunta el `.zip`.
-3. El workflow *Pages* regenera `extensions.json` a partir de los `.zip` publicados.
+3. El workflow *Pages* regenera `extensions.json` a partir de los `.zip` publicados y lo firma con
+   el secret `CATALOG_SIGNING_KEY`. Para cambiar la clave: `node scripts/extensions.mjs keygen`,
+   la privada al secret y la pública a `CATALOG_PUBLIC_KEY` de
+   `apps/claude-launcher/src/main/extension-packages.js`.
 
 Para generar el `.zip` en local: `npx nx run ext-<name>:package` (queda en `dist/`). Para probar un
-catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a extensions.json>`.
+catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a extensions.json>`; en
+desarrollo (`npm run dev`) se admite sin `.sig`, pero si lo tiene debe ser válido.
 
 ## Modelo de seguridad
 
