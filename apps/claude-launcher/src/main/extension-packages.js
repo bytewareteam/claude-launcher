@@ -1,8 +1,8 @@
 // Paquetes de extensiones: catálogo remoto, descarga verificada y extracción segura de .zip.
 // Los .zip los genera `scripts/extensions.mjs` y se publican en GitHub Releases; el catálogo
 // (extensions.json) lo publica el workflow Pages.
-import { createHash } from 'crypto'
-import { net } from 'electron'
+import { createHash, createPublicKey, verify } from 'crypto'
+import { app, net } from 'electron'
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, isAbsolute, resolve, sep } from 'path'
 import { unzipSync } from 'fflate'
@@ -11,11 +11,15 @@ import { unzipSync } from 'fflate'
 const CATALOG_URL =
   process.env.CLAUDE_LAUNCHER_CATALOG ||
   'https://bytewareteam.github.io/claude-launcher/extensions.json'
+// Clave pública ed25519 (SPKI en base64) con la que el workflow Pages firma el catálogo
+// (`node scripts/extensions.mjs keygen`). El sha256 de cada paquete viene en el catálogo, así
+// que sin esta firma quien controle el servidor controlaría también lo que se instala.
+const CATALOG_PUBLIC_KEY = 'MCowBQYDK2VwAyEAvRReRhX8IWz/yJhp+9s/J423bQi/RimMMpYHVeEXEcE='
 const CATALOG_TTL = 5 * 60_000
 const MAX_ZIP = 20 * 1024 * 1024
 const MAX_UNZIPPED = 100 * 1024 * 1024
 
-let cache // { at, entries }
+let cache // { at, catalog }
 
 async function fetchBytes(url) {
   if (!/^https:\/\//i.test(url)) return new Uint8Array(readFileSync(url))
@@ -24,17 +28,49 @@ async function fetchBytes(url) {
   return new Uint8Array(await res.arrayBuffer())
 }
 
-export async function fetchCatalog(force = false) {
-  if (!force && cache && Date.now() - cache.at < CATALOG_TTL) return cache.entries
-  let data
+// Solo en desarrollo y con un catálogo propio se admite uno sin firma (para probar sin la clave).
+const unsignedAllowed = () => !!process.env.CLAUDE_LAUNCHER_CATALOG && !app.isPackaged
+
+// Devuelve la firma del catálogo o null si no hay y se admite sin firma.
+async function fetchSignature() {
   try {
-    data = JSON.parse(new TextDecoder().decode(await fetchBytes(CATALOG_URL)))
+    return Buffer.from(new TextDecoder().decode(await fetchBytes(`${CATALOG_URL}.sig`)), 'base64')
+  } catch (err) {
+    if (unsignedAllowed()) return null
+    throw err
+  }
+}
+
+// { generatedAt, signed, entries }. `generatedAt` va firmado: extensions.js lo compara con el
+// último aceptado para no volver a un catálogo anterior.
+export async function fetchCatalog(force = false) {
+  if (!force && cache && Date.now() - cache.at < CATALOG_TTL) return cache.catalog
+  let bytes, sig
+  try {
+    ;[bytes, sig] = await Promise.all([fetchBytes(CATALOG_URL), fetchSignature()])
   } catch (err) {
     throw new Error(`No se pudo leer el catálogo de extensiones: ${err.message}`)
   }
-  if (data.schemaVersion !== 1) throw new Error('Formato de catálogo no soportado.')
-  cache = { at: Date.now(), entries: data.extensions }
-  return cache.entries
+  const key = createPublicKey({
+    key: Buffer.from(CATALOG_PUBLIC_KEY, 'base64'),
+    format: 'der',
+    type: 'spki'
+  })
+  if (sig && !verify(null, bytes, key, sig))
+    throw new Error('La firma del catálogo de extensiones no es válida.')
+  let data
+  try {
+    data = JSON.parse(new TextDecoder().decode(bytes))
+  } catch (err) {
+    throw new Error(`No se pudo leer el catálogo de extensiones: ${err.message}`)
+  }
+  if (data.schemaVersion !== 1 || !Array.isArray(data.extensions))
+    throw new Error('Formato de catálogo no soportado.')
+  if (sig && !Number.isFinite(data.generatedAt))
+    throw new Error('El catálogo de extensiones no indica su fecha.')
+  const catalog = { generatedAt: data.generatedAt, signed: !!sig, entries: data.extensions }
+  cache = { at: Date.now(), catalog }
+  return catalog
 }
 
 // Descarga el .zip de una entrada del catálogo y comprueba que es exactamente el publicado.

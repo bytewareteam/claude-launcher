@@ -38,6 +38,25 @@ export const CLAUDE_ARGS = /^[\w\s\-=.:/,@]*$/
 // Windows Terminal (`;`) o cmd.exe interpreten.
 const EXTRA_ARG = /^[^"%!^&|<>;\r\n]*$/
 
+// Título de pestaña: lista blanca sin `;` (separador de subcomandos de Windows Terminal) ni `-`
+// inicial (se leería como opción). Viene de nombres de carpeta, ramas o clientes MCP.
+const TITLE_CHAR = /[^\p{L}\p{N} _.:/@#()[\]+,-]/gu
+export const TAB_TITLE = /^(?!-)[\p{L}\p{N} _.:/@#()[\]+,-]*$/u
+
+// El título es solo cosmético: se sanea en vez de impedir abrir la pestaña.
+function safeTitle(title) {
+  return String(title ?? '')
+    .replace(TITLE_CHAR, '_')
+    .replace(/^-+/, '')
+    .slice(0, 100)
+}
+
+// La ruta va a `wt -d`: un `;` partiría el comando (escaparlo con `\` es ambiguo en Windows).
+function checkDir(dir) {
+  if (/[;\r\n]/.test(dir)) throw new Error(`La ruta no puede contener «;»: ${dir}`)
+  if (!existsSync(dir)) throw new Error(`No existe el directorio: ${dir}`)
+}
+
 // ¿Existe la conversación `id` de Claude Code en `dir` (sin `id`: alguna)? Claude las guarda en
 // `~/.claude/projects/<ruta con todo lo no alfanumérico cambiado por ->/<id>.jsonl` y solo tras el
 // primer mensaje. Reanudar una que no existe sale con error y la pestaña se cierra.
@@ -60,7 +79,8 @@ export function openClaude(
   { args = '', newWindow = false } = {},
   extraArgs = []
 ) {
-  if (!existsSync(dir)) throw new Error(`No existe el directorio: ${dir}`)
+  checkDir(dir)
+  title = safeTitle(title)
   if (!CLAUDE_ARGS.test(args)) throw new Error('Los argumentos de Claude tienen caracteres no permitidos.')
   if (!extraArgs.every((a) => EXTRA_ARG.test(a))) throw new Error('Argumento de Claude no admitido.')
   const claude = resolveBin('claude')
@@ -88,11 +108,13 @@ export function openClaude(
     }).unref()
   })
   child.unref()
+  return title
 }
 
 // Terminal normal (PowerShell 7) en `dir`: entorno completo del usuario y ningún secreto.
 export function openShell(dir, title) {
-  if (!existsSync(dir)) throw new Error(`No existe el directorio: ${dir}`)
+  checkDir(dir)
+  title = safeTitle(title)
   const pwsh = resolveBin('pwsh')
   if (!pwsh)
     throw new Error(

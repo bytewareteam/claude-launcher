@@ -265,9 +265,13 @@ function launchClaude(dir, title, scope, extraArgs = [], resume) {
     env = vault.envFor(project, scope.repoId ? resolveScope(scope) : null)
   }
   const session = sessionArgs(dir, resume)
-  openClaude(dir, title, env, settings().claude, [...mcpArgs(), ...session.args, ...extraArgs])
+  const tabTitle = openClaude(dir, title, env, settings().claude, [
+    ...mcpArgs(),
+    ...session.args,
+    ...extraArgs
+  ])
   // Historial de sesiones para la pantalla de inicio (últimas 500).
-  const launch = { at: new Date().toISOString(), dir, title, ...scope }
+  const launch = { at: new Date().toISOString(), dir, title: tabTitle, ...scope }
   if (session.sessionId) launch.sessionId = session.sessionId
   store.set('launches', [launch, ...store.get('launches')].slice(0, 500))
   return Object.keys(env).length

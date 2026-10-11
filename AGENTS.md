@@ -148,7 +148,8 @@ solo se activan tras aceptar sus permisos. En desarrollo carga también las de `
 - Los secretos se pasan por **entorno**, nunca por argumentos de línea de comandos.
 - El portapapeles se limpia tras copiar un secreto (30 s por defecto, 5–300 s en Configuración).
 - No añadas `nodeIntegration` ni desactives `contextIsolation`.
-- Las extensiones no reciben secretos de la bóveda ni código propio en el renderer (UI declarativa). Con el permiso `secrets` solo guardan y leen sus propias credenciales, cifradas con `safeStorage` (`extensionSecrets` en `data.json`).
+- Las extensiones no reciben secretos de la bóveda ni código propio en el renderer (UI declarativa). Con el permiso `secrets` solo guardan y leen sus propias credenciales, cifradas con `safeStorage` (`extensionSecrets` en `data.json`). Esos datos solo se conservan al actualizar desde el catálogo; instalar un `.zip` encima los borra.
+- El catálogo de extensiones va firmado (ed25519) y la app solo lo acepta con su clave pública (`CATALOG_PUBLIC_KEY`) y si no es anterior al último recibido. No quites esa comprobación.
 - El servidor MCP solo escucha en `127.0.0.1`, exige el token (`Authorization: Bearer`), rechaza peticiones con `Origin` y nunca expone la bóveda: no añadas herramientas que devuelvan secretos ni nombres de variables.
 
 ## Datos del usuario

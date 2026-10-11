@@ -2,10 +2,13 @@
 //
 //   node scripts/extensions.mjs pack <dir>         → <dir>/dist/<name>-<version>.zip
 //   node scripts/extensions.mjs catalog <out.json> → índice con la última release de cada una
+//   node scripts/extensions.mjs keygen             → par de claves para firmar el catálogo
 //
 // El catálogo se construye a partir de los .zip ya publicados en GitHub Releases (no del
 // código de main), así su sha256 y sus permisos son los de lo que se descarga de verdad.
-import { createHash } from 'crypto'
+// Se firma (ed25519) con CATALOG_SIGNING_KEY en <out.json>.sig: la app solo acepta catálogos
+// firmados con la clave pública que lleva dentro, no basta con controlar el servidor.
+import { createHash, createPrivateKey, generateKeyPairSync, sign } from 'crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
@@ -55,6 +58,8 @@ function pack(dir) {
 }
 
 async function catalog(outFile) {
+  const key = process.env.CATALOG_SIGNING_KEY
+  if (!key) throw new Error('Falta CATALOG_SIGNING_KEY: el catálogo debe ir firmado.')
   const extensions = []
   for (const name of readdirSync(EXTENSIONS).sort()) {
     const manifestFile = join(EXTENSIONS, name, 'package.json')
@@ -87,13 +92,30 @@ async function catalog(outFile) {
     console.log(`${manifest.name} ${manifest.version}`)
   }
   mkdirSync(dirname(resolve(outFile)), { recursive: true })
-  writeFileSync(outFile, JSON.stringify({ schemaVersion: 1, extensions }, null, 2) + '\n')
+  // generatedAt va dentro de lo firmado: la app rechaza catálogos más antiguos que el último
+  // que aceptó, así no se puede volver a servir uno viejo con su firma válida.
+  const body = Buffer.from(
+    JSON.stringify({ schemaVersion: 1, generatedAt: Date.now(), extensions }, null, 2) + '\n'
+  )
+  writeFileSync(outFile, body)
+  writeFileSync(`${outFile}.sig`, sign(null, body, createPrivateKey(key)).toString('base64'))
+}
+
+// La privada va al secret CATALOG_SIGNING_KEY; la pública, a CATALOG_PUBLIC_KEY en
+// apps/claude-launcher/src/main/extension-packages.js.
+function keygen() {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+  console.log(privateKey.export({ type: 'pkcs8', format: 'pem' }))
+  console.log(
+    `Clave pública: ${publicKey.export({ type: 'spki', format: 'der' }).toString('base64')}`
+  )
 }
 
 const [cmd, arg] = process.argv.slice(2)
 if (cmd === 'pack' && arg) pack(arg)
 else if (cmd === 'catalog' && arg) await catalog(arg)
+else if (cmd === 'keygen') keygen()
 else {
-  console.error('Uso: node scripts/extensions.mjs pack <dir> | catalog <out.json>')
+  console.error('Uso: node scripts/extensions.mjs pack <dir> | catalog <out.json> | keygen')
   process.exit(1)
 }

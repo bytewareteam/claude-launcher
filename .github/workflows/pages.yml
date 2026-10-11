@@ -48,7 +48,10 @@ jobs:
       - run: npx nx run web:build
 
       # Índice de la última versión publicada de cada extensión: lo lee la app.
+      # Firmado con la clave privada del secret; la pública va dentro de la app.
       - run: node scripts/extensions.mjs catalog apps/web/dist/extensions.json
+        env:
+          CATALOG_SIGNING_KEY: ${{ secrets.CATALOG_SIGNING_KEY }}
 
       - uses: actions/upload-pages-artifact@v5
         with:
