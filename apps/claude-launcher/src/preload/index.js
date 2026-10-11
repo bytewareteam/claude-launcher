@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('api', {
   settings: {
     get: invoke('settings:get'),
     set: invoke('settings:set'),
+    pickBinary: invoke('settings:pickBinary'),
     claudeOptions: invoke('claude:options')
   },
   mcp: {

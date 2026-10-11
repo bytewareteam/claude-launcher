@@ -20,6 +20,7 @@ import {
 } from './git'
 import { openClaude, openShell, hasClaudeSession, CLAUDE_ARGS } from './terminal'
 import { claudeOptions } from './claude-cli'
+import { BINARIES, checkBinary, setBinaries, systemBinaries } from './which'
 import * as dev from './dev'
 import * as ide from './ide'
 import * as extensions from './extensions'
@@ -39,7 +40,9 @@ const DEFAULT_BASE_BRANCH = 'origin/develop'
 const DEFAULT_SETTINGS = {
   claude: { args: '', newWindow: false },
   vault: { autoLockMinutes: 15, clipboardSeconds: 30 },
-  mcp: { enabled: true, port: 47821, autoConnect: true }
+  mcp: { enabled: true, port: 47821, autoConnect: true },
+  // Ruta propia de cada programa que lanza la app; vacía = la del PATH del sistema.
+  binaries: Object.fromEntries(Object.keys(BINARIES).map((n) => [n, '']))
 }
 
 function settings() {
@@ -47,7 +50,8 @@ function settings() {
   return {
     claude: { ...DEFAULT_SETTINGS.claude, ...saved.claude },
     vault: { ...DEFAULT_SETTINGS.vault, ...saved.vault },
-    mcp: { ...DEFAULT_SETTINGS.mcp, ...saved.mcp }
+    mcp: { ...DEFAULT_SETTINGS.mcp, ...saved.mcp },
+    binaries: { ...DEFAULT_SETTINGS.binaries, ...saved.binaries }
   }
 }
 
@@ -88,9 +92,13 @@ function updateSettings(patch = {}) {
     if (port !== undefined) next.mcp.port = clampInt(port, 1024, 65535, 'El puerto')
     if (autoConnect !== undefined) next.mcp.autoConnect = !!autoConnect
   }
+  if (patch.binaries)
+    for (const [name, file] of Object.entries(patch.binaries))
+      next.binaries[name] = checkBinary(name, file)
   const mcpChanged = JSON.stringify(next.mcp) !== JSON.stringify(settings().mcp)
   store.set('settings', next)
   vault.setAutoLockMinutes(next.vault.autoLockMinutes)
+  setBinaries(next.binaries)
   if (mcpChanged) startMcp()
   return next
 }
@@ -347,7 +355,19 @@ ipcMain.handle('open:url', (_e, url) => {
 
 // --- Configuración --------------------------------------------------------------
 
-ipcMain.handle('settings:get', () => ({ ...settings(), defaultVaultPath: defaultVaultPath() }))
+ipcMain.handle('settings:get', () => ({
+  ...settings(),
+  defaultVaultPath: defaultVaultPath(),
+  systemBinaries: systemBinaries()
+}))
+ipcMain.handle('settings:pickBinary', async (e) => {
+  const res = await dialog.showOpenDialog(windowOf(e), {
+    title: 'Selecciona el ejecutable',
+    filters: [{ name: 'Programas', extensions: ['exe', 'cmd', 'bat'] }],
+    properties: ['openFile']
+  })
+  return res.canceled ? null : res.filePaths[0] || null
+})
 ipcMain.handle('settings:set', (_e, patch) => updateSettings(patch))
 ipcMain.handle('claude:options', () => claudeOptions())
 
@@ -655,6 +675,7 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('dev.claude-launcher.app')
   app.on('browser-window-created', (_, w) => optimizer.watchWindowShortcuts(w))
   vault.setAutoLockMinutes(settings().vault.autoLockMinutes)
+  setBinaries(settings().binaries)
   extensions.initExtensions({ store, hostApi })
   startMcp()
   createWindow()

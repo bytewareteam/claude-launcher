@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Check,
+  ChevronRight,
   Code,
   Copy,
   FolderOpen,
@@ -12,10 +13,13 @@ import {
   Plug,
   Puzzle,
   RotateCcw,
-  ShieldPlus
+  ShieldPlus,
+  SquareTerminal,
+  X
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { ClaudeArgsInput } from '@/components/ClaudeArgsInput'
 import { ExtensionsPage } from '@/components/ExtensionsPage'
@@ -30,6 +34,7 @@ const SECTIONS = [
   { id: 'ide', label: 'IDE', icon: Code },
   { id: 'vault', label: 'Bóveda', icon: KeyRound },
   { id: 'mcp', label: 'MCP', icon: Plug },
+  { id: 'system', label: 'Sistema', icon: SquareTerminal },
   { id: 'extensions', label: 'Extensiones', icon: Puzzle }
 ]
 const TABS = SECTIONS.map((s) => s.id)
@@ -60,8 +65,8 @@ export function SettingsPage({ initialTab }) {
       <header className="mb-5">
         <h1 className="text-2xl font-semibold">Configuración</h1>
         <p className="text-sm text-muted-foreground">
-          Cómo se abre Claude, el IDE por defecto, la bóveda de secretos, el servidor MCP y las
-          extensiones instaladas.
+          Cómo se abre Claude, el IDE por defecto, la bóveda de secretos, el servidor MCP, los
+          programas del sistema que usa la app y las extensiones instaladas.
         </p>
       </header>
       <div className="flex gap-6">
@@ -89,6 +94,7 @@ export function SettingsPage({ initialTab }) {
           {tab === 'ide' && <IdeSettings />}
           {tab === 'vault' && <VaultSettings />}
           {tab === 'mcp' && <McpSettings />}
+          {tab === 'system' && <SystemSettings />}
           {tab === 'extensions' && <ExtensionsPage embedded />}
         </div>
       </div>
@@ -122,23 +128,28 @@ function ClaudeSettings() {
   const { data: settings } = useSettings()
   const [args, setArgs] = useState('')
   const [newWindow, setNewWindow] = useState(false)
+  const [claudePath, setClaudePath] = useState('')
   const save = useAction(api.settings.set, { onSuccess: saved })
 
   useEffect(() => {
     if (!settings) return
     setArgs(settings.claude.args)
     setNewWindow(settings.claude.newWindow)
+    setClaudePath(settings.binaries.claude)
   }, [settings])
 
   if (!settings) return null
-  const dirty = args.trim() !== settings.claude.args || newWindow !== settings.claude.newWindow
+  const dirty =
+    args.trim() !== settings.claude.args ||
+    newWindow !== settings.claude.newWindow ||
+    claudePath.trim() !== settings.binaries.claude
 
   return (
     <form
       className="flex max-w-2xl flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault()
-        save.mutate({ claude: { args, newWindow } })
+        save.mutate({ claude: { args, newWindow }, binaries: { claude: claudePath } })
       }}
     >
       <Card
@@ -171,6 +182,24 @@ function ClaudeSettings() {
           </p>
         </div>
       </Card>
+      <Collapsible defaultOpen={!!settings.binaries.claude}>
+        <CollapsibleTrigger className="group flex items-center gap-1 py-1 text-xs tracking-widest text-muted-foreground uppercase hover:text-foreground">
+          <ChevronRight className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
+          Avanzado
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-2">
+          <Card
+            title="Ejecutable de Claude Code"
+            description="Por defecto se usa el «claude» del PATH del sistema. Indica otro si tienes varias instalaciones o no está en el PATH."
+          >
+            <BinaryInput
+              value={claudePath}
+              onChange={setClaudePath}
+              detected={settings.systemBinaries.claude}
+            />
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
       <div>
         <Button type="submit" disabled={!dirty || save.isPending}>
           Guardar
@@ -346,6 +375,134 @@ function VaultSettings() {
         </div>
       </form>
     </div>
+  )
+}
+
+// Ruta de un ejecutable: vacía = la que se encuentra en el PATH del sistema (`detected`).
+function BinaryInput({ value, onChange, detected }) {
+  const pick = async () => {
+    const file = await api.settings.pickBinary()
+    if (file) onChange(file)
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex gap-2">
+        <Input
+          className="font-mono text-xs"
+          spellCheck={false}
+          placeholder={detected || 'No se encuentra en el PATH del sistema'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <Button type="button" variant="outline" size="sm" className="h-9" onClick={pick}>
+          <FolderSearch /> Examinar
+        </Button>
+        {value && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-9"
+            title="Usar el del sistema"
+            aria-label="Usar el del sistema"
+            onClick={() => onChange('')}
+          >
+            <X />
+          </Button>
+        )}
+      </div>
+      <span className="text-xs text-muted-foreground">
+        {value
+          ? 'Ruta propia. Vacíala para volver a la del sistema.'
+          : detected
+            ? 'Se usa la del sistema.'
+            : 'No se encuentra en el PATH del sistema: indica su ruta si lo necesitas.'}
+      </span>
+    </div>
+  )
+}
+
+// Programas que lanza la app (Claude se configura en su pestaña).
+const SYSTEM_BINARIES = [
+  {
+    title: 'Terminales',
+    items: [
+      { id: 'cmd', label: 'Símbolo del sistema (cmd.exe)' },
+      { id: 'pwsh', label: 'PowerShell 7 (pwsh.exe)' },
+      { id: 'wt', label: 'Windows Terminal (wt.exe)' }
+    ]
+  },
+  { title: 'Control de versiones', items: [{ id: 'git', label: 'Git (git.exe)' }] },
+  {
+    title: 'JavaScript',
+    items: [
+      { id: 'node', label: 'Node.js (node.exe)' },
+      { id: 'npm', label: 'npm' },
+      { id: 'pnpm', label: 'pnpm' },
+      { id: 'yarn', label: 'Yarn' },
+      { id: 'bun', label: 'Bun' }
+    ]
+  },
+  {
+    title: 'Python y .NET',
+    items: [
+      { id: 'uv', label: 'uv' },
+      { id: 'poetry', label: 'Poetry' },
+      { id: 'dotnet', label: '.NET (dotnet.exe)' }
+    ]
+  }
+]
+const SYSTEM_IDS = SYSTEM_BINARIES.flatMap((g) => g.items.map((i) => i.id))
+
+function SystemSettings() {
+  const { data: settings } = useSettings()
+  const [paths, setPaths] = useState({})
+  const save = useAction(api.settings.set, { onSuccess: saved })
+
+  useEffect(() => {
+    if (!settings) return
+    setPaths(Object.fromEntries(SYSTEM_IDS.map((id) => [id, settings.binaries[id]])))
+  }, [settings])
+
+  if (!settings) return null
+  const dirty = SYSTEM_IDS.some((id) => (paths[id] ?? '').trim() !== settings.binaries[id])
+
+  return (
+    <form
+      className="flex max-w-2xl flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault()
+        save.mutate({ binaries: paths })
+      }}
+    >
+      <p className="text-sm text-muted-foreground">
+        Por defecto la app busca cada programa en el PATH del sistema. Indica una ruta si alguno no
+        está en el PATH o quieres fijar una versión concreta: su carpeta se antepone al PATH de lo
+        que lance la app (sesiones de Claude, instalaciones y extensiones). Nunca se buscan en la
+        carpeta del repositorio.
+      </p>
+      {SYSTEM_BINARIES.map((group) => (
+        <Card key={group.title} title={group.title}>
+          <div className="mt-3 flex flex-col gap-4">
+            {group.items.map(({ id, label }) => (
+              <div key={id} className="flex flex-col gap-1.5 text-sm">
+                <span className="font-medium">{label}</span>
+                <BinaryInput
+                  value={paths[id] ?? ''}
+                  onChange={(v) => setPaths((p) => ({ ...p, [id]: v }))}
+                  detected={settings.systemBinaries[id]}
+                />
+              </div>
+            ))}
+          </div>
+        </Card>
+      ))}
+      <div>
+        <Button type="submit" disabled={!dirty || save.isPending}>
+          Guardar
+        </Button>
+      </div>
+    </form>
   )
 }
 

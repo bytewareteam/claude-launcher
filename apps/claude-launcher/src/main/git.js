@@ -1,10 +1,11 @@
 import { execFile } from 'child_process'
 import { normalize, resolve } from 'path'
 import { existsSync } from 'fs'
+import { resolveBin } from './which'
 
 function git(args, cwd) {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd, windowsHide: true }, (err, stdout, stderr) => {
+    execFile(resolveBin('git') || 'git', args, { cwd, windowsHide: true }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr.trim() || err.message))
       else resolve(stdout)
     })

@@ -2,7 +2,7 @@ import { spawn } from 'child_process'
 import { existsSync, readdirSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { NO_CWD_EXE, comspec, whichWin } from './which'
+import { NO_CWD_EXE, resolveBin } from './which'
 
 // Únicas variables del sistema que hereda la terminal: las que Windows, git,
 // node y la propia shell necesitan para funcionar, más la configuración de red.
@@ -63,17 +63,23 @@ export function openClaude(
   if (!existsSync(dir)) throw new Error(`No existe el directorio: ${dir}`)
   if (!CLAUDE_ARGS.test(args)) throw new Error('Los argumentos de Claude tienen caracteres no permitidos.')
   if (!extraArgs.every((a) => EXTRA_ARG.test(a))) throw new Error('Argumento de Claude no admitido.')
+  const claude = resolveBin('claude')
+  if (!claude)
+    throw new Error(
+      'No se encuentra Claude Code. Instálalo o indica su ruta en Configuración → Claude → Avanzado.'
+    )
   const env = { ...baseEnv(), ...extraEnv }
   const claudeArgs = [...args.split(/\s+/).filter(Boolean), ...extraArgs]
   // Nueva pestaña en la última ventana (crea una si no hay) o ventana nueva.
-  const wtArgs = ['-w', newWindow ? 'new' : '0', 'nt', '-d', dir, '--title', title, 'claude', ...claudeArgs]
-  const child = spawn('wt.exe', wtArgs, { env, detached: true, stdio: 'ignore' })
+  const wtArgs = ['-w', newWindow ? 'new' : '0', 'nt', '-d', dir, '--title', title, claude, ...claudeArgs]
+  const child = spawn(resolveBin('wt') || 'wt.exe', wtArgs, { env, detached: true, stdio: 'ignore' })
   child.on('error', () => {
     // Fallback sin Windows Terminal. `dir` es el repo: cmd.exe por ruta absoluta y sin buscar
     // `claude` en la carpeta actual, que recibiría los secretos de la bóveda.
     const line = claudeArgs.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')
-    const cmd = comspec()
-    spawn(cmd, ['/c', `start "" "${cmd}" /k claude ${line}`.trim()], {
+    const cmd = resolveBin('cmd')
+    // /k quita las comillas externas: así la ruta de claude conserva las suyas.
+    spawn(cmd, ['/c', `start "" "${cmd}" /k ""${claude}" ${line}"`], {
       cwd: dir,
       env: { ...env, ...NO_CWD_EXE },
       detached: true,
@@ -87,12 +93,12 @@ export function openClaude(
 // Terminal normal (PowerShell 7) en `dir`: entorno completo del usuario y ningún secreto.
 export function openShell(dir, title) {
   if (!existsSync(dir)) throw new Error(`No existe el directorio: ${dir}`)
-  const pwsh = whichWin('pwsh.exe', [join(process.env.PROGRAMFILES || '', 'PowerShell', '7')])
+  const pwsh = resolveBin('pwsh')
   if (!pwsh)
     throw new Error(
-      'No se encuentra PowerShell 7 (pwsh). Instálalo con `winget install Microsoft.PowerShell`.'
+      'No se encuentra PowerShell 7 (pwsh). Instálalo con `winget install Microsoft.PowerShell` o indica su ruta en Configuración → Sistema.'
     )
-  const child = spawn('wt.exe', ['-w', '0', 'nt', '-d', dir, '--title', title, pwsh], {
+  const child = spawn(resolveBin('wt') || 'wt.exe', ['-w', '0', 'nt', '-d', dir, '--title', title, pwsh], {
     detached: true,
     stdio: 'ignore'
   })

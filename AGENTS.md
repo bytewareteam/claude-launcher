@@ -144,6 +144,7 @@ solo se activan tras aceptar sus permisos. En desarrollo carga también las de `
 
 - Los secretos **nunca** salen del proceso principal salvo por `vault:get`/`vault:copy` a petición del usuario.
 - `terminal.js` solo hereda una lista blanca de variables del sistema (`SYSTEM_VARS`). No la amplíes sin motivo.
+- Nunca resuelvas un ejecutable desde la carpeta de un repo: usa `resolveBin` (ruta absoluta, la de Configuración o la del PATH del sistema) y `NO_CWD_EXE` cuando haya `cmd.exe` de por medio (`which.js`). Un programa nuevo se añade a `BINARIES`.
 - Los secretos se pasan por **entorno**, nunca por argumentos de línea de comandos.
 - El portapapeles se limpia tras copiar un secreto (30 s por defecto, 5–300 s en Configuración).
 - No añadas `nodeIntegration` ni desactives `contextIsolation`.
