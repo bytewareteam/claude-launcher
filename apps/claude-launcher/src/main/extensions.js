@@ -236,8 +236,9 @@ function stage(zip) {
   }
 }
 
+// Solo tokens emitidos por stage(): el token forma parte de la ruta que se borra.
 function discard(token) {
-  staged.delete(token)
+  if (!staged.delete(token)) return
   rmSync(join(stagingDir(), token), { recursive: true, force: true })
 }
 
