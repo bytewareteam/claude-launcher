@@ -18,7 +18,7 @@ import {
   checkBranchName,
   addWorktree
 } from './git'
-import { openClaude, openShell, CLAUDE_ARGS } from './terminal'
+import { openClaude, openShell, hasClaudeSession, CLAUDE_ARGS } from './terminal'
 import { claudeOptions } from './claude-cli'
 import * as dev from './dev'
 import * as ide from './ide'
@@ -220,22 +220,46 @@ ipcMain.handle('worktree:remove', (_e, repoPath, wtPath, force) =>
   removeWorktree(repoPath, wtPath, force)
 )
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Cada sesión lleva un id propio (`--session-id`) para poder reanudarla después con `--resume`.
+// Las entradas antiguas del historial no lo tienen: se continúa la última conversación de la
+// carpeta. Si el usuario fija ya estos argumentos en la configuración, mandan los suyos.
+function sessionArgs(dir, { resume = false, sessionId } = {}) {
+  if (/(^|\s)(-c|-r|--continue|--resume|--session-id)(\s|=|$)/.test(settings().claude.args))
+    return { args: [] }
+  if (resume && sessionId) {
+    if (!UUID.test(sessionId)) throw new Error('Id de sesión no válido.')
+    // Sin ningún mensaje Claude no la guardó: se abre de nuevo con el mismo id.
+    const flag = hasClaudeSession(dir, sessionId) ? '--resume' : '--session-id'
+    return { sessionId, args: [flag, sessionId] }
+  }
+  if (resume && hasClaudeSession(dir)) return { args: ['--continue'] }
+  const id = randomUUID()
+  return { sessionId: id, args: ['--session-id', id] }
+}
+
 // Abre Claude con las variables de la bóveda del scope (si está desbloqueada) y lo apunta en el
 // historial. Devuelve cuántas variables se inyectaron.
-function launchClaude(dir, title, scope, extraArgs = []) {
+function launchClaude(dir, title, scope, extraArgs = [], resume) {
   let env = {}
   if (scope && vault.isUnlocked()) {
     const project = resolveScope({ projectId: scope.projectId })
     env = vault.envFor(project, scope.repoId ? resolveScope(scope) : null)
   }
-  openClaude(dir, title, env, settings().claude, [...mcpArgs(), ...extraArgs])
+  const session = sessionArgs(dir, resume)
+  openClaude(dir, title, env, settings().claude, [...mcpArgs(), ...session.args, ...extraArgs])
   // Historial de sesiones para la pantalla de inicio (últimas 500).
   const launch = { at: new Date().toISOString(), dir, title, ...scope }
+  if (session.sessionId) launch.sessionId = session.sessionId
   store.set('launches', [launch, ...store.get('launches')].slice(0, 500))
   return Object.keys(env).length
 }
 
-ipcMain.handle('open:claude', (_e, dir, title, scope) => launchClaude(dir, title, scope))
+// `resume`: `{ resume: true, sessionId }` reanuda esa sesión del historial.
+ipcMain.handle('open:claude', (_e, dir, title, scope, resume) =>
+  launchClaude(dir, title, scope, [], resume)
+)
 
 // --- Iniciar desarrollo -----------------------------------------------------------
 // Una extensión lo pide (`ctx.dev.start`), el renderer muestra el diálogo y va llamando a cada

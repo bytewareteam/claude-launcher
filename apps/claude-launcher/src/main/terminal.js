@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
-import { existsSync } from 'fs'
+import { existsSync, readdirSync } from 'fs'
+import { homedir } from 'os'
 import { join } from 'path'
 import { whichWin } from './which'
 
@@ -36,6 +37,19 @@ export const CLAUDE_ARGS = /^[\w\s\-=.:/,@]*$/
 // Argumentos que añade la propia app (p. ej. el prompt inicial): admiten espacios, pero nada que
 // Windows Terminal (`;`) o cmd.exe interpreten.
 const EXTRA_ARG = /^[^"%!^&|<>;\r\n]*$/
+
+// ¿Existe la conversación `id` de Claude Code en `dir` (sin `id`: alguna)? Claude las guarda en
+// `~/.claude/projects/<ruta con todo lo no alfanumérico cambiado por ->/<id>.jsonl` y solo tras el
+// primer mensaje. Reanudar una que no existe sale con error y la pestaña se cierra.
+export function hasClaudeSession(dir, id) {
+  const root = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
+  const folder = join(root, 'projects', dir.replace(/[^a-zA-Z0-9]/g, '-'))
+  try {
+    return readdirSync(folder).some((f) => (id ? f === `${id}.jsonl` : f.endsWith('.jsonl')))
+  } catch {
+    return false
+  }
+}
 
 // Windows Terminal pasa el entorno de quien lo invoca a la pestaña nueva,
 // así los secretos no aparecen en la línea de comandos.
