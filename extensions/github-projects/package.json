@@ -1,7 +1,7 @@
 {
   "name": "github-projects",
   "displayName": "GitHub Projects",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Añade a cada proyecto una pestaña con el tablero de un GitHub Project o de las issues de sus repos (columnas por estado, sub-issues y tus elementos) donde mover las tarjetas de columna, y un botón para iniciar el desarrollo de una issue con Claude Code. Usa la sesión de GitHub CLI.",
   "main": "index.js",
   "private": true,

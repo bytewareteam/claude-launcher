@@ -1,7 +1,7 @@
 {
   "name": "azure-boards",
   "displayName": "Azure Boards",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Añade a cada proyecto un dashboard del sprint de Azure DevOps (estado, tus historias y sus tareas) un kanban de las historias del sprint filtrable por persona y un botón para iniciar el desarrollo de historias, tareas y bugs con Claude Code.",
   "main": "index.js",
   "private": true,

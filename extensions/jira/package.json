@@ -1,7 +1,7 @@
 {
   "name": "jira",
   "displayName": "Jira",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Añade a cada proyecto una pestaña de Jira Cloud con el kanban del sprint activo (con sus subtareas), tus incidencias y un botón para iniciar su desarrollo con Claude Code.",
   "main": "index.js",
   "private": true,

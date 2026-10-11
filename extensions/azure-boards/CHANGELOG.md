@@ -1,3 +1,14 @@
+## 0.2.0 (2026-10-11)
+
+### 🚀 Features
+
+- conectar cada proyecto con un único tablero ([#15](https://github.com/bytewareteam/claude-launcher/pull/15))
+- iniciar desarrollo desde historias, tareas y bugs de Azure Boards ([a889490](https://github.com/bytewareteam/claude-launcher/commit/a889490))
+
+### ❤️ Thank You
+
+- Willian Monoga @bytewareteam
+
 ## 0.1.0 (2026-10-10)
 
 ### 🚀 Features

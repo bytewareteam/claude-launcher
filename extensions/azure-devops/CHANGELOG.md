@@ -1,3 +1,17 @@
+## 1.2.0 (2026-10-11)
+
+### 🚀 Features
+
+- vista de repos compacta, IDE por defecto, terminal y clonado desde extensiones ([#7](https://github.com/bytewareteam/claude-launcher/pull/7))
+
+### 🩹 Fixes
+
+- aislar las extensiones con el modelo de permisos de Node ([#25](https://github.com/bytewareteam/claude-launcher/pull/25))
+
+### ❤️ Thank You
+
+- Willian Monoga @bytewareteam
+
 ## 1.1.0 (2026-10-10)
 
 This was a version bump only for ext-azure-devops to align it with other projects, there were no code changes.
