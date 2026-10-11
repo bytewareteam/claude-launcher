@@ -75,8 +75,17 @@ export async function remoteWebUrl(repoPath) {
   return `https://${host}/${path}`
 }
 
+// Rama base (p. ej. origin/develop). Sin `-` inicial ni `..`: git la tomaría por una opción
+// (`--output=…` escribe un archivo) o por un rango.
+export function checkBaseBranch(base) {
+  if (typeof base !== 'string' || !/^[\w][\w./-]*$/.test(base) || base.includes('..'))
+    throw new Error('La rama base solo admite letras, números y los caracteres _ . / -')
+  return base
+}
+
 // Qué se perdería al borrar un worktree: cambios sin commitear y commits que no están en la rama base.
 export async function worktreeStatus(wtPath, base) {
+  checkBaseBranch(base)
   if (!existsSync(wtPath)) return { missing: true }
   const lines = (s) => s.split(/\r?\n/).filter(Boolean)
   const dirty = lines(await git(['status', '--porcelain'], wtPath))

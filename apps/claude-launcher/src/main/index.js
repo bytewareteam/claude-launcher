@@ -17,6 +17,7 @@ import {
   remoteWebUrl,
   defaultRemoteBranch,
   checkBranchName,
+  checkBaseBranch,
   addWorktree
 } from './git'
 import { openClaude, openShell, hasClaudeSession, CLAUDE_ARGS } from './terminal'
@@ -145,7 +146,8 @@ function isAppFrame(frame) {
   if (!frame || frame.parent) return false
   try {
     const url = new URL(frame.url)
-    if (devRendererUrl()) return url.origin === new URL(devRendererUrl()).origin
+    const dev = devRendererUrl()
+    if (dev) return url.origin === new URL(dev).origin
     return (
       url.protocol === 'file:' &&
       normalize(fileURLToPath(url)).toLowerCase() === normalize(rendererIndex()).toLowerCase()
@@ -212,6 +214,9 @@ handle('project:remove', (_e, id) =>
   )
 )
 
+// Carpetas elegidas en el diálogo de `repo:pick`: `repo:add` solo acepta una de estas.
+const pickedRepos = new Set()
+
 handle('repo:pick', async (e) => {
   const res = await dialog.showOpenDialog(windowOf(e), {
     title: 'Selecciona la carpeta del repositorio',
@@ -222,9 +227,6 @@ handle('repo:pick', async (e) => {
   pickedRepos.add(root)
   return root
 })
-
-// Carpetas elegidas en el diálogo de `repo:pick`: `repo:add` solo acepta una de estas.
-const pickedRepos = new Set()
 
 const findRepo = (projectId, repoId) => {
   const r = findProject(projects(), projectId).repos.find((x) => x.id === repoId)
@@ -259,17 +261,22 @@ async function findByPath(dir) {
   const all = allRepos()
   const direct = all.find(({ repo }) => samePath(repo.path, dir))
   if (direct) return { ...direct, branch: null }
-  for (const fresh of [false, true]) {
-    for (const entry of all) {
-      const wts =
-        fresh || !worktreeCache.has(entry.repo.path)
-          ? await worktreesOf(entry.repo.path).catch(() => [])
-          : worktreeCache.get(entry.repo.path)
-      const wt = wts.find((w) => w.path && samePath(w.path, dir))
-      if (wt) return { ...entry, branch: wt.branch ?? null, path: wt.path }
-    }
+  const match = (entry, wts) => {
+    const wt = wts.find((w) => w.path && samePath(w.path, dir))
+    return wt && { ...entry, branch: wt.branch ?? null, path: wt.path }
   }
-  throw new Error(`${dir} no es un repositorio registrado ni uno de sus worktrees.`)
+  for (const entry of all) {
+    const found = match(entry, worktreeCache.get(entry.repo.path) ?? [])
+    if (found) return found
+  }
+  // La caché puede no tener aún un worktree recién creado (o estar vacía): se pregunta a git.
+  for (const entry of all) {
+    const found = match(entry, await worktreesOf(entry.repo.path).catch(() => []))
+    if (found) return found
+  }
+  throw new Error(
+    `${dir} no es un repositorio registrado ni uno de sus worktrees (¿lo quitaste o se borró?).`
+  )
 }
 
 // Ruta registrada (repo o worktree) tal y como la conoce la app.
@@ -283,7 +290,7 @@ async function addRepo(projectId, repoPath) {
   const baseBranch = (await defaultRemoteBranch(repoPath)) || DEFAULT_BASE_BRANCH
   return updateProjects((list) => {
     const p = findProject(list, projectId)
-    if (!p.repos.some((r) => r.path.toLowerCase() === repoPath.toLowerCase())) {
+    if (!p.repos.some((r) => samePath(r.path, repoPath))) {
       p.repos.push({ id: randomUUID(), name: basename(repoPath), path: repoPath, baseBranch })
     }
   })
@@ -308,7 +315,7 @@ handle('repo:remoteBranches', (_e, repoPath) => remoteBranches(registeredRepo(re
 handle('repo:setBase', (_e, projectId, repoId, branch) =>
   updateProjects((list) => {
     const r = findProject(list, projectId).repos.find((x) => x.id === repoId)
-    if (r) r.baseBranch = branch
+    if (r) r.baseBranch = checkBaseBranch(branch)
   })
 )
 
@@ -366,9 +373,17 @@ function launchClaude(dir, title, scope, extraArgs = [], resume) {
 }
 
 // `resume`: `{ resume: true, sessionId }` reanuda esa sesión del historial.
-handle('open:claude', async (_e, dir, title, scope, resume) =>
-  launchClaude(await knownDir(dir), title, scope, [], resume)
-)
+// Las variables del scope solo se inyectan en una carpeta de ese mismo proyecto/repo.
+handle('open:claude', async (_e, dir, title, scope, resume) => {
+  const { repo, path } = await findByPath(dir)
+  if (scope) {
+    const p = findProject(projects(), scope.projectId)
+    const owners = scope.repoId ? [findRepo(p.id, scope.repoId)] : p.repos
+    if (!owners.some((r) => samePath(r.path, repo.path)))
+      throw new Error('La carpeta no pertenece a ese proyecto o repositorio.')
+  }
+  return launchClaude(path || repo.path, title, scope, [], resume)
+})
 
 // --- Iniciar desarrollo -----------------------------------------------------------
 // Una extensión lo pide (`ctx.dev.start`), el renderer muestra el diálogo y va llamando a cada
@@ -499,9 +514,7 @@ handle('vault:showFile', () => shell.showItemInFolder(vaultPath()))
 
 handle('vault:list', (_e, scope) => vault.listVars(resolveScope(scope)))
 handle('vault:get', (_e, scope, id) => vault.getValue(resolveScope(scope), id))
-handle('vault:set', (_e, scope, key, value) =>
-  vault.setVars(resolveScope(scope), [{ key, value }])
-)
+handle('vault:set', (_e, scope, key, value) => vault.setVars(resolveScope(scope), [{ key, value }]))
 handle('vault:delete', (_e, scope, id) => vault.deleteVar(resolveScope(scope), id))
 
 handle('vault:copy', (_e, scope, id) => {
