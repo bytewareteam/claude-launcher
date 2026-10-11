@@ -1,10 +1,12 @@
 // Gestor de extensiones: las instala, guarda qué permisos aceptó el usuario y arranca
 // cada una en su propio utilityProcess (ver extension-host.js).
 import { app, utilityProcess } from 'electron'
+import { execFile } from 'child_process'
 import { randomUUID } from 'crypto'
 import { join, resolve, sep } from 'path'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'fs'
 import { baseEnv } from './terminal'
+import { CMD_UNSAFE, NO_CWD_EXE, isScript, resolveBin, whichWin } from './which'
 import * as packages from './extension-packages'
 
 export const API_VERSION = 1
@@ -322,14 +324,24 @@ function appendLog(ext, text) {
   if (ext.log.length > LOG_LINES) ext.log.splice(0, ext.log.length - LOG_LINES)
 }
 
+// Modelo de permisos de Node: la extensión solo lee su carpeta y el código del host, sin
+// escribir, lanzar procesos ni Workers. Electron ignora `execArgv` en utilityProcess, pero
+// respeta NODE_OPTIONS. Dentro de comillas, NODE_OPTIONS trata `\` como escape.
+function sandboxOptions(ext) {
+  const quote = (p) => `"${p.replace(/\\/g, '\\\\')}"`
+  const readable = [ext.dir, __dirname].map((d) => `--allow-fs-read=${quote(d)}`)
+  return ['--permission', ...readable].join(' ')
+}
+
 function start(ext) {
   if (ext.ready) return ext.ready
   ext.error = null
   ext.calls = new Map()
+  ext.children = new Set()
   ext.nextId = 0
   const proc = utilityProcess.fork(join(__dirname, 'extension-host.js'), [], {
     // Mismo entorno mínimo que la terminal: nada de tokens sueltos del sistema.
-    env: baseEnv(),
+    env: { ...baseEnv(), NODE_OPTIONS: sandboxOptions(ext) },
     cwd: ext.dir,
     stdio: 'pipe',
     serviceName: `Extensión ${ext.id}`
@@ -361,7 +373,59 @@ function stop(ext) {
   const proc = ext.proc
   ext.proc = ext.ready = null
   for (const c of ext.calls?.values() ?? []) c.reject(new Error('La extensión se detuvo.'))
+  for (const child of ext.children ?? []) child.kill()
   proc?.kill()
+}
+
+// `ctx.exec`: el proceso de la extensión no puede lanzar programas, así que lo hace el principal
+// y solo con los que el usuario aceptó en el manifest.
+function exec(ext, cmd, args = [], { cwd, timeout = 60_000, env } = {}) {
+  cmd = String(cmd)
+  if (!ext.permissions.exec.includes(cmd))
+    throw new Error(`La extensión no tiene permiso para ejecutar «${cmd}».`)
+  args = (Array.isArray(args) ? args : []).map(String)
+  let file = cmd
+  let shell = false
+  if (process.platform === 'win32') {
+    const found = whichWin(cmd)
+    if (!found) throw Object.assign(new Error(`No se encuentra «${cmd}».`), { code: 'ENOENT' })
+    if (isScript(found)) {
+      if (args.some((a) => CMD_UNSAFE.test(a)))
+        throw new Error(`Argumento no admitido para «${cmd}» (es un script .cmd).`)
+      // La línea se monta aquí (no con args + shell, obsoleto en Node): ya está validada.
+      const quote = (a) => (/[\s,;=]/.test(a) ? `"${a}"` : a)
+      file = [`"${found}"`, ...args.map(quote)].join(' ')
+      args = []
+      shell = resolveBin('cmd')
+    }
+  }
+  // `env` se suma al entorno mínimo, como el que tenía el proceso de la extensión.
+  const extra = env && typeof env === 'object' ? env : {}
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      file,
+      args,
+      {
+        cwd: cwd ? String(cwd) : ext.dir,
+        timeout: Number(timeout) || 60_000,
+        shell,
+        env: {
+          ...baseEnv(),
+          ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, String(v)])),
+          // `cwd` suele ser un repo: cmd.exe no debe ejecutar sus binarios.
+          ...NO_CWD_EXE
+        },
+        windowsHide: true,
+        maxBuffer: 50 * 1024 * 1024
+      },
+      (err, stdout, stderr) => {
+        ext.children?.delete(child)
+        if (!err) return resolve(stdout)
+        reject(Object.assign(new Error(stderr.trim() || err.message), { code: err.code }))
+      }
+    )
+    ext.children?.add(child)
+  })
 }
 
 function call(ext, method, ...params) {
@@ -394,11 +458,12 @@ async function onMessage(ext, msg) {
     const perm = METHOD_PERMISSION[msg.method]
     if (perm && !ext.permissions[perm])
       throw new Error(`La extensión no tiene el permiso «${perm}».`)
-    const fn = hostApi[msg.method]
+    const fn = msg.method === 'exec' ? exec : hostApi[msg.method]
     if (!fn) throw new Error(`Método desconocido: ${msg.method}`)
     reply({ result: (await fn(ext, ...msg.params)) ?? null })
   } catch (err) {
-    reply({ error: String(err?.message || err) })
+    const code = typeof err?.code === 'string' || typeof err?.code === 'number' ? err.code : null
+    reply({ error: String(err?.message || err), code })
   }
 }
 

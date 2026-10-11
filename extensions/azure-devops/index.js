@@ -1,6 +1,5 @@
 // Extensión de Azure DevOps: usa la sesión de Azure CLI (`az login`), así que no guarda tokens.
 // Solo pide a `az` un token de acceso; el resto son llamadas a la API REST de Azure DevOps.
-const { existsSync } = require('fs')
 const { join } = require('path')
 
 // Id de recurso de Azure DevOps en Microsoft Entra ID (fijo para todos los tenants).
@@ -160,7 +159,6 @@ exports.activate = (ctx) => {
     if (!parent) return
     await ctx.storage.set('cloneDir', parent)
     const dest = join(parent, name)
-    if (existsSync(dest)) throw new Error(`Ya existe ${dest}`)
     // El token va por entorno (no en la línea de comandos ni en .git/config): solo vale para
     // este clone. Los fetch/push posteriores usan el gestor de credenciales de git.
     await ctx.exec('git', ['clone', url, dest], {

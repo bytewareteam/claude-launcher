@@ -1,7 +1,6 @@
 // Extensión de Bitbucket: usa la sesión de bkt (`bkt auth login`), así que no guarda tokens.
 // Vale para Bitbucket Cloud (workspaces) y Data Center (proyectos): cada contexto de bkt apunta
 // a un host y, opcionalmente, a su workspace o proyecto por defecto.
-const { existsSync } = require('fs')
 const { join } = require('path')
 
 const MAX_PAGES = 20
@@ -272,7 +271,6 @@ exports.activate = (ctx) => {
     if (!parent) return
     await ctx.storage.set('cloneDir', parent)
     const dest = join(parent, slug)
-    if (existsSync(dest)) throw new Error(`Ya existe ${dest}`)
     const ssh = await ctx.storage.get('ssh')
     try {
       // bkt solo elige la URL: las credenciales las pone git (Git Credential Manager o la clave

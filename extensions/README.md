@@ -43,9 +43,13 @@ desarrollo (`npm run dev`) se admite sin `.sig`, pero si lo tiene debe ser váli
   desinstalarla.
 - Su UI es **declarativa**: devuelve JSON y la app lo pinta. Ningún código de la extensión llega
   al renderer.
-- Los permisos del manifest controlan la API de `ctx`. Ojo: el proceso es Node completo, así que
-  una extensión maliciosa podría leer archivos por su cuenta. Electron no admite el modelo de
-  permisos de Node en `utilityProcess`; por eso las extensiones de usuario piden consentimiento.
+- El proceso corre con el [modelo de permisos de Node](https://nodejs.org/api/permissions.html)
+  (`--permission`): solo **lee** su propia carpeta y no puede escribir archivos, lanzar procesos
+  (`child_process`), crear Workers ni cargar addons nativos. La red sí está disponible (`fetch`).
+  Si el aislamiento no se activa, la extensión no arranca.
+- Por eso no uses `fs` ni `child_process`: los programas se lanzan con `ctx.exec` (los ejecuta el
+  proceso principal tras comprobar el permiso `exec`) y los datos se guardan con `ctx.storage`.
+- Los permisos del manifest controlan la API de `ctx`, y el usuario los acepta antes de activarla.
 
 ## Manifest (`package.json`)
 

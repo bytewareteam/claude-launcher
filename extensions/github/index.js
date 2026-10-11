@@ -1,5 +1,4 @@
 // Extensión de GitHub: usa la sesión de GitHub CLI (`gh auth login`), así que no guarda tokens.
-const { existsSync } = require('fs')
 const { join } = require('path')
 
 const FIELDS = 'name,nameWithOwner,description,isPrivate,isFork,isArchived,updatedAt,url,primaryLanguage'
@@ -104,7 +103,6 @@ exports.activate = (ctx) => {
     if (!parent) return
     await ctx.storage.set('cloneDir', parent)
     const dest = join(parent, name)
-    if (existsSync(dest)) throw new Error(`Ya existe ${dest}`)
     // Con la URL HTTPS gh no usa su `git_protocol` (que puede ser ssh sin clave configurada)
     // y autentica a git con su propio token.
     await ctx.exec('gh', ['repo', 'clone', url, dest], { timeout: 15 * 60_000 })
