@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+  - extensions/*
+
+# pnpm solo ejecuta los scripts de instalación aprobados aquí: electron y esbuild descargan su
+# binario. nx (post-install opcional) y electron-winstaller (Squirrel, que no usamos) no los
+# necesitan.
+allowBuilds:
+  electron: true
+  esbuild: true
+  electron-winstaller: false
+  nx: false

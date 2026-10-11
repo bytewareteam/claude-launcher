@@ -23,7 +23,7 @@ Con Tailwind v4 (después de `@import 'tailwindcss';`):
 La única fuente es `tokens.js`. Tras editarlo, regenera los CSS y versiónalos junto al cambio:
 
 ```bash
-npx nx run design-tokens:build
+pnpm nx run design-tokens:build
 ```
 
-`tokens.css` y `theme.css` se generan pero se guardan en git, para que `npm run dev` funcione sin compilar antes el paquete. Nx también los regenera antes de compilar cualquier proyecto que dependa de él (`dependsOn: ["^build"]`).
+`tokens.css` y `theme.css` se generan pero se guardan en git, para que `pnpm dev` funcione sin compilar antes el paquete. Nx también los regenera antes de compilar cualquier proyecto que dependa de él (`dependsOn: ["^build"]`).

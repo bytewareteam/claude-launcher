@@ -33,15 +33,17 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       # Falla antes de versionar si la app no compila.
-      - run: npx nx run-many -t build
+      - run: pnpm exec nx run-many -t build
 
       - name: Identidad de git para el commit de release
         run: |
@@ -51,7 +53,7 @@ jobs:
       - name: Versionar, changelog y release en GitHub
         env:
           GH_TOKEN: ${{ github.token }}
-        run: npx nx release --skip-publish
+        run: pnpm exec nx release --skip-publish
 
       - name: ¿Hay versión nueva?
         id: tag
@@ -59,7 +61,7 @@ jobs:
 
       - name: Empaquetar portable
         if: steps.tag.outputs.tag != ''
-        run: npx nx run claude-launcher:package
+        run: pnpm exec nx run claude-launcher:package
 
       - name: Adjuntar portable a la release
         if: steps.tag.outputs.tag != ''
@@ -73,7 +75,7 @@ jobs:
         run: |
           for tag in $(git tag --points-at HEAD --list 'ext-*'); do
             project="${tag%-v*}"
-            npx nx run "$project:package"
+            pnpm exec nx run "$project:package"
             gh release upload "$tag" "extensions/${project#ext-}/dist/"*.zip --clobber
             # Las releases de extensiones no deben quitarle a la app el «Latest» de GitHub.
             gh release edit "$tag" --latest=false
