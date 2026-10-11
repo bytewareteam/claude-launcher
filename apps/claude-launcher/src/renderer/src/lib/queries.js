@@ -18,6 +18,15 @@ export function useVars(scope) {
   })
 }
 
+export function useGeneralSecrets(category) {
+  const { data: vault } = useVaultStatus()
+  return useQuery({
+    queryKey: ['vault', 'general', category],
+    queryFn: () => api.general.list(category),
+    enabled: !!vault?.unlocked
+  })
+}
+
 // Mutación genérica: la caché global muestra los errores y refresca los datos.
 export const useAction = (fn, options) => useMutation({ mutationFn: fn, ...options })
 

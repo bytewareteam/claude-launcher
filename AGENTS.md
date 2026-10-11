@@ -9,6 +9,7 @@ Claude Launcher es una app de escritorio **Electron** (solo Windows por ahora) q
 - Registra **proyectos** y sus **repositorios git**.
 - Lista los **worktrees** de cada repo y su estado frente a una rama base.
 - Guarda **variables de entorno secretas** por proyecto/repo en una bóveda **KeePass (.kdbx)**.
+- Gestiona en esa bóveda **secretos generales** del usuario (contraseñas, credenciales de sistema, llaves SSH, secretos personales) que nunca se inyectan en Claude.
 - Abre **Claude Code** en una pestaña de Windows Terminal con solo esas variables inyectadas.
 - Ofrece un **servidor MCP** local para que las sesiones de Claude Code consulten proyectos y worktrees y pidan acciones a la app.
 

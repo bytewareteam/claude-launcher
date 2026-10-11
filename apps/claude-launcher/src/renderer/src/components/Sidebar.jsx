@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { House, Lock, LockOpen, Plus, Search, Settings, ShieldPlus } from 'lucide-react'
+import { House, KeyRound, Lock, LockOpen, Plus, Search, Settings, ShieldPlus } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
 import { searchShortcut } from '@/components/CommandPalette'
 import { Button } from '@/components/ui/button'
@@ -83,6 +83,11 @@ export function Sidebar({ projects, extViews, selectedId, onSelect, onSearch, ne
       </nav>
       <footer className="flex flex-col gap-1 border-t p-3">
         <VaultButton />
+        <button onClick={() => onSelect('vault')} className={navItem(selectedId === 'vault')}>
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <KeyRound className="size-4" /> Bóveda
+          </span>
+        </button>
         <button onClick={() => onSelect('settings')} className={navItem(selectedId === 'settings')}>
           <span className="flex items-center gap-2 text-muted-foreground">
             <Settings className="size-4" /> Configuración

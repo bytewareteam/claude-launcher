@@ -11,6 +11,7 @@ App de escritorio para organizar tus proyectos y repositorios, guardar sus secre
 - **Proyectos y repos**: agrupa varios repositorios git bajo un proyecto.
 - **Worktrees**: lista los worktrees de cada repo, sus cambios sin commitear y los commits que llevan por delante de la rama base. Abre Claude en cualquiera o elimínalos.
 - **Bóveda de secretos**: variables de entorno por proyecto y por repo, guardadas en un archivo `.kdbx` (compatible con KeePassXC). Importa desde `.env`. Se bloquea sola a los 15 minutos.
+- **Secretos personales**: la sección *Bóveda* guarda tus contraseñas, credenciales de sistema, llaves SSH y otros secretos en el mismo `.kdbx`. Nunca se pasan a Claude ni a las extensiones.
 - **Lanzar Claude**: abre una pestaña de Windows Terminal en la carpeta elegida con `claude` y solo las variables de ese proyecto/repo (más las imprescindibles del sistema).
 - **Inicio**: resumen de actividad, sesiones recientes y avisos de worktrees con cambios.
 - **Búsqueda global**: `Ctrl+K` (`⌘K` en Mac) para buscar proyectos, repos, worktrees y sesiones.

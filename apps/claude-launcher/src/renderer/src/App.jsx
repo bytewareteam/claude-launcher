@@ -5,6 +5,7 @@ import { Home } from '@/components/Home'
 import { CommandPalette } from '@/components/CommandPalette'
 import { ExtensionView } from '@/components/ExtensionView'
 import { SettingsPage } from '@/components/SettingsPage'
+import { VaultPage } from '@/components/VaultPage'
 import { Onboarding } from '@/components/Onboarding'
 import { useExtensions, useOnboardingPending, useProjects } from '@/lib/queries'
 
@@ -22,7 +23,7 @@ const SETTINGS_IDS = ['settings', 'extensions']
 export default function App() {
   const { data: projects = [] } = useProjects()
   const { data: extensions = [] } = useExtensions()
-  // null = inicio; 'settings' = configuración; 'ext:<id>/<vista>' = vista de una extensión.
+  // null = inicio; 'vault' y 'settings' = esas páginas; 'ext:<id>/<vista>' = vista de una extensión.
   const [selectedId, setSelectedId] = useState(readSelected)
   const [searchOpen, setSearchOpen] = useState(false)
   const [newProjectOpen, setNewProjectOpen] = useState(false)
@@ -34,7 +35,9 @@ export default function App() {
     .flatMap((e) => e.views.map((v) => ({ key: `ext:${e.id}/${v.id}`, extension: e, view: v })))
   const extView = extViews.find((v) => v.key === selectedId)
   const activeId =
-    project?.id ?? extView?.key ?? (SETTINGS_IDS.includes(selectedId) ? 'settings' : null)
+    project?.id ??
+    extView?.key ??
+    (SETTINGS_IDS.includes(selectedId) ? 'settings' : selectedId === 'vault' ? 'vault' : null)
 
   useEffect(() => {
     try {
@@ -70,10 +73,16 @@ export default function App() {
           />
         ) : extView ? (
           <ExtensionView key={extView.key} extension={extView.extension} view={extView.view} />
+        ) : activeId === 'vault' ? (
+          <VaultPage />
         ) : activeId === 'settings' ? (
           <SettingsPage initialTab={selectedId === 'extensions' ? 'extensions' : undefined} />
         ) : (
-          <Home projects={projects} onSelect={setSelectedId} onTutorial={() => setTutorialOpen(true)} />
+          <Home
+            projects={projects}
+            onSelect={setSelectedId}
+            onTutorial={() => setTutorialOpen(true)}
+          />
         )}
       </main>
       <CommandPalette

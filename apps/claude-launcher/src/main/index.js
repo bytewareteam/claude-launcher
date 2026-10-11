@@ -525,14 +525,15 @@ handle('vault:get', (_e, scope, id) => vault.getValue(resolveScope(scope), id))
 handle('vault:set', (_e, scope, key, value) => vault.setVars(resolveScope(scope), [{ key, value }]))
 handle('vault:delete', (_e, scope, id) => vault.deleteVar(resolveScope(scope), id))
 
-handle('vault:copy', async (_e, scope, id) => {
-  const value = vault.getValue(resolveScope(scope), id)
+async function copySecret(value) {
   await writeSecret(value)
   // Limpia el portapapeles pasado el plazo configurado si sigue conteniendo el secreto.
   setTimeout(() => {
     if (clipboard.readText() === value) clipboard.clear()
   }, settings().vault.clipboardSeconds * 1000)
-})
+}
+
+handle('vault:copy', (_e, scope, id) => copySecret(vault.getValue(resolveScope(scope), id)))
 
 handle('vault:importEnv', async (e, scope) => {
   const res = await dialog.showOpenDialog(windowOf(e), {
@@ -544,6 +545,35 @@ handle('vault:importEnv', async (e, scope) => {
   const vars = Object.entries(parsed).map(([key, value]) => ({ key, value }))
   if (vars.length) await vault.setVars(resolveScope(scope), vars)
   return vars.length
+})
+
+// Secretos generales (contraseñas, credenciales, llaves SSH…): no se inyectan en ninguna sesión.
+handle('general:list', (_e, category) => vault.listGeneral(category))
+handle('general:get', (_e, category, id, field) => vault.getGeneral(category, id, field))
+handle('general:set', (_e, category, id, values) => vault.setGeneral(category, id, values))
+handle('general:delete', (_e, category, id) => vault.deleteGeneral(category, id))
+handle('general:copy', (_e, category, id, field) =>
+  copySecret(vault.getGeneral(category, id, field))
+)
+
+// Guarda una llave privada (y su .pub si está al lado) sin que pase por el renderer.
+handle('general:importSshKey', async (e) => {
+  if (!vault.isUnlocked()) throw new Error('La bóveda está bloqueada.')
+  const res = await dialog.showOpenDialog(windowOf(e), {
+    title: 'Importar llave SSH privada',
+    defaultPath: join(app.getPath('home'), '.ssh'),
+    properties: ['openFile', 'showHiddenFiles']
+  })
+  const file = res.filePaths[0]
+  if (res.canceled || !file) return null
+  const privateKey = readFileSync(file, 'utf8')
+  if (privateKey.length > 64 * 1024 || !/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(privateKey))
+    throw new Error('El archivo no parece una llave privada SSH.')
+  const pub = `${file}.pub`
+  const publicKey = existsSync(pub) ? readFileSync(pub, 'utf8').trim() : ''
+  const title = basename(file)
+  await vault.setGeneral('ssh', null, { title, privateKey, publicKey })
+  return title
 })
 
 // --- Servidor MCP ----------------------------------------------------------------
