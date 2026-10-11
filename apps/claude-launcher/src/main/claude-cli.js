@@ -1,15 +1,23 @@
 import { exec } from 'child_process'
 import { baseEnv } from './terminal'
+import { resolveBin } from './which'
 
 // Opciones de `claude` para el autocompletado de Configuración. Se leen de `claude --help`
 // para seguir siempre a la versión instalada en lugar de mantener una lista a mano.
 let cache = null
+let cachedFor = null
 
 export function claudeOptions() {
+  const claude = resolveBin('claude')
+  if (!claude) return Promise.resolve([])
+  // Si cambia la ruta configurada, se vuelven a leer las opciones.
+  if (cachedFor !== claude) cache = null
+  cachedFor = claude
   cache ??= new Promise((resolve) => {
-    // Comando fijo, sin datos del usuario: la shell solo resuelve claude.exe/claude.cmd.
-    exec('claude --help', { env: baseEnv(), timeout: 15_000, windowsHide: true }, (err, stdout) => {
-      // Sin claude instalado no se cachea el fallo: se reintenta la próxima vez.
+    // Ruta absoluta validada, sin datos del usuario en la línea.
+    const opts = { env: baseEnv(), shell: resolveBin('cmd'), timeout: 15_000, windowsHide: true }
+    exec(`"${claude}" --help`, opts, (err, stdout) => {
+      // Si falla no se cachea: se reintenta la próxima vez.
       if (err) cache = null
       resolve(err ? [] : parseHelp(stdout))
     })
