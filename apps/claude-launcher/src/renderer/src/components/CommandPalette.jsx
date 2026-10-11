@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
-import { FolderGit2, FolderKanban, GitBranch, History, House, Plus } from 'lucide-react'
+import { FolderGit2, FolderKanban, GitBranch, History, House, KeyRound, Plus } from 'lucide-react'
 import {
   CommandDialog,
   CommandEmpty,
@@ -47,7 +47,12 @@ export function CommandPalette({ open, onOpenChange, projects, onSelect, onNewPr
   })
 
   const wtItems = repos.flatMap(({ project, repo }, i) =>
-    (worktrees[i]?.data ?? []).map((wt) => ({ project, repo, wt, title: `${repo.name}:${wtLabel(wt)}` }))
+    (worktrees[i]?.data ?? []).map((wt) => ({
+      project,
+      repo,
+      wt,
+      title: `${repo.name}:${wtLabel(wt)}`
+    }))
   )
 
   // Últimas sesiones: una por id de sesión (las antiguas, sin id, una por carpeta).
@@ -80,6 +85,12 @@ export function CommandPalette({ open, onOpenChange, projects, onSelect, onNewPr
           <CommandItem value="action:home Inicio" onSelect={run(() => onSelect(null))}>
             <House /> Ir a Inicio
           </CommandItem>
+          <CommandItem
+            value="action:vault Bóveda contraseñas llaves SSH secretos"
+            onSelect={run(() => onSelect('vault'))}
+          >
+            <KeyRound /> Ir a la bóveda
+          </CommandItem>
           <CommandItem value="action:new Nuevo proyecto" onSelect={run(onNewProject)}>
             <Plus /> Nuevo proyecto
           </CommandItem>
@@ -88,7 +99,11 @@ export function CommandPalette({ open, onOpenChange, projects, onSelect, onNewPr
         {projects.length > 0 && (
           <CommandGroup heading="Proyectos">
             {projects.map((p) => (
-              <CommandItem key={p.id} value={`project:${p.id} ${p.name}`} onSelect={run(() => onSelect(p.id))}>
+              <CommandItem
+                key={p.id}
+                value={`project:${p.id} ${p.name}`}
+                onSelect={run(() => onSelect(p.id))}
+              >
                 <FolderKanban /> {p.name}
               </CommandItem>
             ))}
@@ -119,7 +134,9 @@ export function CommandPalette({ open, onOpenChange, projects, onSelect, onNewPr
                 key={wt.path}
                 value={`wt:${wt.path} ${title} ${project.name}`}
                 keywords={[wt.path]}
-                onSelect={run(() => launch(wt.path, title, { projectId: project.id, repoId: repo.id }))}
+                onSelect={run(() =>
+                  launch(wt.path, title, { projectId: project.id, repoId: repo.id })
+                )}
               >
                 <GitBranch />
                 <span className="truncate">{title}</span>
@@ -140,7 +157,9 @@ export function CommandPalette({ open, onOpenChange, projects, onSelect, onNewPr
                   launch(
                     l.dir,
                     l.title,
-                    l.projectId && projectName(l.projectId) ? { projectId: l.projectId, repoId: l.repoId } : undefined,
+                    l.projectId && projectName(l.projectId)
+                      ? { projectId: l.projectId, repoId: l.repoId }
+                      : undefined,
                     { resume: true, sessionId: l.sessionId }
                   )
                 )}

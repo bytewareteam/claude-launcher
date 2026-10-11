@@ -73,6 +73,14 @@ contextBridge.exposeInMainWorld('api', {
     importEnv: invoke('vault:importEnv'),
     onLocked: on('vault:locked')
   },
+  general: {
+    list: invoke('general:list'),
+    get: invoke('general:get'),
+    set: invoke('general:set'),
+    remove: invoke('general:delete'),
+    copy: invoke('general:copy'),
+    importSshKey: invoke('general:importSshKey')
+  },
   extensions: {
     list: invoke('ext:list'),
     setEnabled: invoke('ext:setEnabled'),

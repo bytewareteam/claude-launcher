@@ -1,6 +1,7 @@
 // Bóveda de secretos en un archivo KeePass (.kdbx), compatible con KeePassXC.
 // Estructura: grupo raíz "Claude Launcher" > grupo por proyecto > grupo por repo.
 // Cada variable de entorno es una entrada: Title = nombre, Password = valor.
+// Los secretos generales van en "Claude Launcher" > "General" > un grupo por categoría.
 import fs from 'fs';
 import path from 'path';
 import { Kdbx, Credentials, ProtectedValue, CryptoEngine, Consts, VarDictionary, Int64 } from 'kdbxweb';
@@ -206,6 +207,105 @@ export function envFor(projectScope, repoScope) {
     }
   }
   return env;
+}
+
+// --- Secretos generales -------------------------------------------------------
+// Contraseñas, credenciales, llaves SSH… que no son variables de entorno: nunca se inyectan en
+// Claude. Viven en "Claude Launcher" > "General" > un grupo por categoría.
+
+const FIELDS = {
+  title: { name: 'Title' },
+  username: { name: 'UserName' },
+  url: { name: 'URL' },
+  notes: { name: 'Notes' },
+  password: { name: 'Password', secret: true },
+  publicKey: { name: 'Clave pública' },
+  privateKey: { name: 'Clave privada', secret: true },
+};
+
+const CATEGORIES = {
+  passwords: { name: 'Contraseñas', fields: ['title', 'username', 'password', 'url', 'notes'] },
+  system: { name: 'Credenciales de sistema', fields: ['title', 'username', 'password', 'url', 'notes'] },
+  ssh: { name: 'Llaves SSH', fields: ['title', 'username', 'privateKey', 'password', 'publicKey', 'notes'] },
+  personal: { name: 'Secretos personales', fields: ['title', 'password', 'notes'] },
+};
+
+function categoryFields(category) {
+  const def = CATEGORIES[category];
+  if (!def) throw new Error('Categoría no válida.');
+  return def.fields;
+}
+
+// Reutiliza la estructura proyecto > repo con ids que no chocan con los de los proyectos (UUID).
+function categoryGroup(category, createIfMissing) {
+  categoryFields(category);
+  const scope = { projectId: 'general', projectName: 'General' };
+  return scopeGroup(
+    { ...scope, repoId: `general:${category}`, repoName: CATEGORIES[category].name },
+    createIfMissing
+  );
+}
+
+function generalEntry(category, id) {
+  const entry = categoryGroup(category, false)?.entries.find((e) => e.uuid.id === id);
+  if (!entry) throw new Error('Secreto no encontrado.');
+  return entry;
+}
+
+// Devuelve los campos visibles; de los secretos, solo cuáles tienen valor.
+export function listGeneral(category) {
+  const fields = categoryFields(category);
+  if (!db) return [];
+  touch();
+  const group = categoryGroup(category, false);
+  return (group?.entries || [])
+    .map((e) => {
+      const item = { id: e.uuid.id, updated: e.times.lastModTime?.toISOString(), secrets: [] };
+      for (const f of fields) {
+        const text = fieldText(e, FIELDS[f].name);
+        if (!FIELDS[f].secret) item[f] = text;
+        else if (text) item.secrets.push(f);
+      }
+      return item;
+    })
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+export function getGeneral(category, id, field) {
+  requireUnlocked();
+  if (!categoryFields(category).includes(field)) throw new Error('Campo no válido.');
+  return fieldText(generalEntry(category, id), FIELDS[field].name);
+}
+
+// Crea (sin id) o edita una entrada. Un secreto vacío conserva el valor anterior: así el
+// formulario de edición no necesita recibir los secretos.
+export async function setGeneral(category, id, values) {
+  const fields = categoryFields(category);
+  requireUnlocked();
+  if (!String(values?.title ?? '').trim()) throw new Error('El nombre es obligatorio.');
+  let entry;
+  if (id) {
+    entry = generalEntry(category, id);
+    entry.pushHistory();
+  } else {
+    entry = db.createEntry(categoryGroup(category, true));
+  }
+  for (const f of fields) {
+    const value = values[f];
+    if (typeof value !== 'string') continue;
+    const { name, secret } = FIELDS[f];
+    if (!secret) entry.fields.set(name, f === 'title' ? value.trim() : value);
+    else if (value) entry.fields.set(name, ProtectedValue.fromString(value));
+  }
+  entry.times.update();
+  await save();
+  return entry.uuid.id;
+}
+
+export async function deleteGeneral(category, id) {
+  requireUnlocked();
+  db.remove(generalEntry(category, id)); // Va a la papelera de KeePass.
+  await save();
 }
 
 export const isUnlocked = () => !!db;
