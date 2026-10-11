@@ -83,7 +83,7 @@ En cada push a `main`, `.github/workflows/release.yml` ejecuta `nx release` con 
 - **app**: sube la versión de `apps/claude-launcher/package.json`, actualiza `CHANGELOG.md`, crea el tag `vX.Y.Z` y la release de GitHub con el `.exe` portable adjunto.
 - **extensions** (independiente): cada `extensions/<nombre>` con commits nuevos sube su versión y su `CHANGELOG.md`, y crea el tag `ext-<nombre>-vX.Y.Z` con el `.zip` adjunto. La app sigue siendo la release *Latest*.
 
-Después, `.github/workflows/pages.yml` regenera el catálogo `extensions.json` que lee la app. Usa un scope en los commits de extensiones (`feat(github): …`). No edites versiones ni changelogs a mano.
+Después, `.github/workflows/pages.yml` regenera el catálogo `extensions.json` que lee la app. Usa un scope en los commits de extensiones (`feat(github): …`) para el changelog; la versión de cada proyecto la decide qué archivos toca el commit, no el scope (`useCommitScope: false` en `nx.json`). No edites versiones ni changelogs a mano.
 
 ## Web (`apps/web`)
 
