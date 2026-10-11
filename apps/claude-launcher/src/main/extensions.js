@@ -16,7 +16,9 @@ const METHOD_PERMISSION = {
   'projects.list': 'projects',
   'projects.addRepo': 'projects',
   'ui.pickFolder': 'dialogs',
-  'dev.start': 'develop'
+  'dev.start': 'develop',
+  'secrets.get': 'secrets',
+  'secrets.set': 'secrets'
 }
 
 // La app no trae extensiones: se instalan del catálogo o de un .zip en userDir. En desarrollo
@@ -44,7 +46,9 @@ function normalizePermissions(perms = {}) {
     exec: Array.isArray(perms.exec) ? perms.exec.map(String) : [],
     projects: !!perms.projects,
     dialogs: !!perms.dialogs,
-    develop: !!perms.develop
+    develop: !!perms.develop,
+    // Solo si se pide: así no cambia `grantKey` ni se vuelve a pedir permiso a las que ya están.
+    ...(perms.secrets && { secrets: true })
   }
 }
 
@@ -257,9 +261,11 @@ export function uninstall(id) {
   stop(ext)
   rmSync(ext.dir, { recursive: true, force: true, maxRetries: 5 })
   setState(id, null)
-  const data = store.get('extensionData', {})
-  delete data[id]
-  store.set('extensionData', data)
+  for (const key of ['extensionData', 'extensionSecrets']) {
+    const data = store.get(key, {})
+    delete data[id]
+    store.set(key, data)
+  }
   scan()
 }
 

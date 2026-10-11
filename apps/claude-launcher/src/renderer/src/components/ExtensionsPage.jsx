@@ -34,6 +34,7 @@ export function permissionLines(p) {
   if (p.projects) lines.push('Ver tus proyectos y añadirles repositorios')
   if (p.dialogs) lines.push('Abrir diálogos para elegir carpetas')
   if (p.develop) lines.push('Proponerte crear worktrees y abrir Claude Code con un contexto')
+  if (p.secrets) lines.push('Guardar sus propias credenciales cifradas (no ve la bóveda)')
   return lines
 }
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, safeStorage } from 'electron'
 import { join, basename, resolve } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { randomBytes, randomUUID } from 'crypto'
@@ -516,6 +516,20 @@ const hostApi = {
       const placeholder = options?.placeholder
       broadcast('ext:quickPick', { id, from: ext.displayName, items, placeholder })
     }),
+  'ui.input': (ext, options) =>
+    new Promise((resolve) => {
+      const id = randomUUID()
+      prompts.set(id, (value) => resolve(value == null ? null : String(value)))
+      broadcast('ext:input', {
+        id,
+        from: ext.displayName,
+        title: String(options?.title ?? ''),
+        description: String(options?.description ?? ''),
+        placeholder: String(options?.placeholder ?? ''),
+        value: String(options?.value ?? ''),
+        password: !!options?.password
+      })
+    }),
   'ui.pickFolder': async (_ext, options) => {
     const res = await dialog.showOpenDialog(BrowserWindow.getAllWindows()[0], {
       title: options?.title || 'Selecciona una carpeta',
@@ -546,6 +560,23 @@ const hostApi = {
   'storage.set': (ext, key, value) => {
     const all = store.get('extensionData', {})
     store.set('extensionData', { ...all, [ext.id]: { ...all[ext.id], [key]: value } })
+  },
+  // Credenciales propias de cada extensión (p. ej. un token de API), cifradas con safeStorage
+  // (DPAPI en Windows). Aparte de la bóveda: una extensión solo ve lo que ella misma guardó.
+  'secrets.get': (ext, key) => {
+    const enc = store.get('extensionSecrets', {})[ext.id]?.[key]
+    return enc ? safeStorage.decryptString(Buffer.from(enc, 'base64')) : null
+  },
+  'secrets.set': (ext, key, value) => {
+    const all = store.get('extensionSecrets', {})
+    const mine = { ...all[ext.id] }
+    if (value == null || value === '') delete mine[key]
+    else {
+      if (!safeStorage.isEncryptionAvailable())
+        throw new Error('El sistema no permite cifrar credenciales.')
+      mine[key] = safeStorage.encryptString(String(value)).toString('base64')
+    }
+    store.set('extensionSecrets', { ...all, [ext.id]: mine })
   }
 }
 

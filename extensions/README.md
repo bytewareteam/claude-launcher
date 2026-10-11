@@ -29,6 +29,9 @@ catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a ex
 - Cada extensión corre en su propio `utilityProcess`, con el mismo entorno mínimo que la terminal
   (`SYSTEM_VARS` de `src/main/terminal.js`).
 - No comparte memoria con el proceso principal: **no ve la bóveda** ni puede hablar con la ventana.
+- Con el permiso `secrets` puede guardar sus propias credenciales (las que el usuario le da, p. ej. un
+  token de API), cifradas con `safeStorage` aparte de la bóveda. Solo ve las suyas y se borran al
+  desinstalarla.
 - Su UI es **declarativa**: devuelve JSON y la app lo pinta. Ningún código de la extensión llega
   al renderer.
 - Los permisos del manifest controlan la API de `ctx`. Ojo: el proceso es Node completo, así que
@@ -50,7 +53,8 @@ catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a ex
       "exec": ["gh", "git"],
       "projects": true,
       "dialogs": true,
-      "develop": true
+      "develop": true,
+      "secrets": true
     },
     "views": [{ "id": "principal", "title": "Mi vista", "icon": "puzzle" }],
     "projectTabs": [{ "id": "board", "title": "Board", "icon": "kanban" }],
@@ -65,6 +69,7 @@ catálogo sin publicarlo, arranca la app con `CLAUDE_LAUNCHER_CATALOG=<ruta a ex
 | `projects` | `ctx.projects.list()` y `ctx.projects.addRepo()` |
 | `dialogs` | `ctx.ui.pickFolder()` |
 | `develop` | `ctx.dev.start()` |
+| `secrets` | `ctx.secrets.get()` y `ctx.secrets.set()` |
 
 Cada vista de `views` aparece en la barra lateral; cada una de `projectTabs`, como pestaña en la
 pantalla de cada proyecto. Ambas se registran igual con `ctx.views.register`. Una pestaña de
@@ -147,11 +152,13 @@ Con `detail: { title, description?, blocks }`, una cifra de `stats` o un segment
 | `ctx.projects.list()` | `[{ id, name, repos: [{ id, name, path }] }]` |
 | `ctx.projects.addRepo(projectId, path)` | Añade el repo git en `path` al proyecto |
 | `ctx.ui.quickPick(items, { placeholder })` | `id` elegido o `null`. `items: [{ id, label, description? }]` |
+| `ctx.ui.input({ title, description, placeholder, value, password })` | Texto escrito o `null` si se cancela. Con `password` se oculta |
 | `ctx.ui.pickFolder({ title, defaultPath })` | Ruta o `null` |
 | `ctx.ui.toast(mensaje, 'info' \| 'error')` | — |
 | `ctx.ui.openExternal(url)` | Abre un enlace `https://` en el navegador |
 | `ctx.dev.start({ projectId, branch, title, context, repoId? })` | Abre el diálogo *Iniciar desarrollo* (ver abajo) y vuelve en cuanto se muestra |
 | `ctx.storage.get(clave)` / `set(clave, valor)` | Datos JSON propios de la extensión |
+| `ctx.secrets.get(clave)` / `set(clave, texto)` | Credenciales propias (p. ej. un token de API), cifradas por la app con `safeStorage`. `set(clave, null)` la borra |
 | `ctx.views.refresh(viewId?)` | Vuelve a pintar la vista |
 
 `ctx.dev.start` propone al usuario una rama (`branch`, editable) en uno de los repos del proyecto.
@@ -167,4 +174,4 @@ con `" % ! ^ & | < >` o saltos de línea, que cmd.exe interpretaría.
 `console.log` y los errores van al **Registro** de la extensión (pantalla *Extensiones*).
 
 Ejemplos completos: [`github/`](github/index.js), [`azure-devops/`](azure-devops/index.js),
-[`bitbucket/`](bitbucket/index.js) y [`azure-boards/`](azure-boards/index.js) (pestaña de proyecto).
+[`bitbucket/`](bitbucket/index.js), [`azure-boards/`](azure-boards/index.js) y [`jira/`](jira/index.js) (pestañas de proyecto).

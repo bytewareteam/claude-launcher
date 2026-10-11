@@ -84,6 +84,7 @@ const ctx = {
   ui: {
     toast: (message, kind = 'info') => host('ui.toast', message, kind),
     quickPick: (items, options = {}) => host('ui.quickPick', items, options),
+    input: (options = {}) => host('ui.input', options),
     pickFolder: (options = {}) => host('ui.pickFolder', options),
     openExternal: (url) => host('ui.openExternal', url)
   },
@@ -95,6 +96,11 @@ const ctx = {
   storage: {
     get: (key) => host('storage.get', key),
     set: (key, value) => host('storage.set', key, value)
+  },
+  // Cifrados en el principal; `set(clave, null)` los borra.
+  secrets: {
+    get: (key) => host('secrets.get', key),
+    set: (key, value) => host('secrets.set', key, value)
   }
 }
 
