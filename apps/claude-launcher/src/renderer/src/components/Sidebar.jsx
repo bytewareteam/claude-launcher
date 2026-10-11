@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { House, KeyRound, PanelLeftClose, Plus, Search, Settings } from 'lucide-react'
+import { Coffee, House, KeyRound, PanelLeftClose, Plus, Search, Settings } from 'lucide-react'
 import { isMac, searchShortcut } from '@/components/CommandPalette'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,8 +15,10 @@ import {
 import { api } from '@/lib/api'
 import { useAction } from '@/lib/queries'
 import { extIcon } from '@/lib/extIcons'
+import { GithubIcon } from '@/lib/brandIcons'
 import { cn } from '@/lib/utils'
 import logo from '@claude-launcher/design-tokens/logo.svg'
+import { version } from '../../../../package.json'
 
 export const sidebarShortcut = isMac ? '⌘ ×2' : 'Ctrl ×2'
 
@@ -101,6 +103,20 @@ export function Sidebar({
             <Settings className="size-4" /> Configuración
           </span>
         </button>
+        <div className="flex items-center gap-1 px-3 pt-1 text-xs text-muted-foreground">
+          <span className="mr-auto">v{version}</span>
+          {/* Los enlaces con target _blank los abre el navegador (setWindowOpenHandler). */}
+          <Button variant="ghost" size="icon-xs" asChild title="Código en GitHub">
+            <a href="https://github.com/bytewareteam/claude-launcher" target="_blank" rel="noreferrer">
+              <GithubIcon />
+            </a>
+          </Button>
+          <Button variant="ghost" size="icon-xs" asChild title="Invítame a un café">
+            <a href="https://buymeacoffee.com/wmonoga" target="_blank" rel="noreferrer">
+              <Coffee />
+            </a>
+          </Button>
+        </div>
       </footer>
     </aside>
   )
