@@ -12,6 +12,7 @@ import {
   LockOpen,
   Plug,
   Puzzle,
+  RefreshCw,
   RotateCcw,
   ShieldPlus,
   SquareTerminal,
@@ -24,6 +25,7 @@ import { Input } from '@/components/ui/input'
 import { ClaudeArgsInput } from '@/components/ClaudeArgsInput'
 import { ExtensionsPage } from '@/components/ExtensionsPage'
 import { useAskVault } from '@/components/VaultProvider'
+import { useUpdates } from '@/components/UpdateProvider'
 import { api } from '@/lib/api'
 import { ClaudeIcon, ideIcon } from '@/lib/brandIcons'
 import { useAction, useIdes, useMcpStatus, useSettings, useVaultStatus } from '@/lib/queries'
@@ -35,6 +37,7 @@ const SECTIONS = [
   { id: 'vault', label: 'Bóveda', icon: KeyRound },
   { id: 'mcp', label: 'MCP', icon: Plug },
   { id: 'system', label: 'Sistema', icon: SquareTerminal },
+  { id: 'updates', label: 'Actualizaciones', icon: RefreshCw },
   { id: 'extensions', label: 'Extensiones', icon: Puzzle }
 ]
 const TABS = SECTIONS.map((s) => s.id)
@@ -66,7 +69,7 @@ export function SettingsPage({ initialTab }) {
         <h1 className="text-2xl font-semibold">Configuración</h1>
         <p className="text-sm text-muted-foreground">
           Cómo se abre Claude, el IDE por defecto, la bóveda de secretos, el servidor MCP, los
-          programas del sistema que usa la app y las extensiones instaladas.
+          programas del sistema que usa la app, las actualizaciones y las extensiones instaladas.
         </p>
       </header>
       <div className="flex gap-6">
@@ -95,6 +98,7 @@ export function SettingsPage({ initialTab }) {
           {tab === 'vault' && <VaultSettings />}
           {tab === 'mcp' && <McpSettings />}
           {tab === 'system' && <SystemSettings />}
+          {tab === 'updates' && <UpdateSettings />}
           {tab === 'extensions' && <ExtensionsPage embedded />}
         </div>
       </div>
@@ -621,6 +625,59 @@ function McpSettings() {
           <Button variant="ghost" size="sm" onClick={() => regenerate.mutate()}>
             <RotateCcw /> Generar token nuevo
           </Button>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function UpdateSettings() {
+  const { data: settings } = useSettings()
+  const updates = useUpdates()
+  const save = useAction(api.settings.set, { onSuccess: saved })
+
+  if (!settings) return null
+  const info = updates.info
+
+  return (
+    <div className="flex max-w-2xl flex-col gap-4">
+      <Card
+        title="Actualizaciones"
+        description="La app consulta la última versión publicada en GitHub. El .exe portable se actualiza desde aquí; las demás instalaciones abren la página de descarga."
+      >
+        <div className="flex flex-col gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={settings.updates.checkOnStartup}
+              disabled={save.isPending}
+              onChange={(e) => save.mutate({ updates: { checkOnStartup: e.target.checked } })}
+            />
+            Buscar actualizaciones al abrir la app
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={updates.checking}
+              onClick={() => updates.check()}
+            >
+              <RefreshCw className={cn(updates.checking && 'animate-spin')} /> Buscar ahora
+            </Button>
+            {info && (
+              <span className="text-xs text-muted-foreground">
+                {info.available
+                  ? `v${info.latest} disponible (tienes la v${info.current}).`
+                  : `Tienes la última versión (v${info.current}).`}
+              </span>
+            )}
+            {info?.available && (
+              <Button size="sm" onClick={updates.show}>
+                Ver novedades
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
     </div>

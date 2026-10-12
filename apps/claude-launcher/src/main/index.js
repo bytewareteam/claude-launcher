@@ -27,6 +27,8 @@ import * as dev from './dev'
 import * as ide from './ide'
 import * as extensions from './extensions'
 import * as mcp from './mcp'
+import * as updater from './updater'
+import { compareVersions } from './extension-packages'
 import { writeSecret } from './clipboard'
 import icon from '../../resources/icon.png?asset'
 
@@ -44,6 +46,7 @@ const DEFAULT_SETTINGS = {
   claude: { args: '', newWindow: false },
   vault: { autoLockMinutes: 15, clipboardSeconds: 30 },
   mcp: { enabled: true, port: 47821, autoConnect: true },
+  updates: { checkOnStartup: true },
   // Ruta propia de cada programa que lanza la app; vacía = la del PATH del sistema.
   binaries: Object.fromEntries(Object.keys(BINARIES).map((n) => [n, '']))
 }
@@ -54,6 +57,7 @@ function settings() {
     claude: { ...DEFAULT_SETTINGS.claude, ...saved.claude },
     vault: { ...DEFAULT_SETTINGS.vault, ...saved.vault },
     mcp: { ...DEFAULT_SETTINGS.mcp, ...saved.mcp },
+    updates: { ...DEFAULT_SETTINGS.updates, ...saved.updates },
     binaries: { ...DEFAULT_SETTINGS.binaries, ...saved.binaries }
   }
 }
@@ -95,6 +99,8 @@ function updateSettings(patch = {}) {
     if (port !== undefined) next.mcp.port = clampInt(port, 1024, 65535, 'El puerto')
     if (autoConnect !== undefined) next.mcp.autoConnect = !!autoConnect
   }
+  if (patch.updates?.checkOnStartup !== undefined)
+    next.updates.checkOnStartup = !!patch.updates.checkOnStartup
   if (patch.binaries)
     for (const [name, file] of Object.entries(patch.binaries))
       next.binaries[name] = checkBinary(name, file)
@@ -488,6 +494,22 @@ handle('settings:pickBinary', async (e) => {
 })
 handle('settings:set', (_e, patch) => updateSettings(patch))
 handle('claude:options', () => claudeOptions())
+
+// --- Actualizaciones ------------------------------------------------------------
+
+handle('updates:check', () => updater.check())
+handle('updates:install', async (e) => {
+  const version = await updater.install((progress) => e.sender.send('updates:progress', progress))
+  // Si al volver a abrir sigue la versión anterior, la sustitución del .exe falló.
+  store.set('updateTarget', version)
+  return version
+})
+// Una sola vez tras intentar actualizar: la versión que se esperaba si no se llegó a instalar.
+handle('updates:failed', () => {
+  const target = store.get('updateTarget')
+  store.delete('updateTarget')
+  return target && compareVersions(target, app.getVersion()) > 0 ? target : null
+})
 
 // --- Tutorial -------------------------------------------------------------------
 

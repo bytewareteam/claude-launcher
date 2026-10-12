@@ -1,5 +1,15 @@
 import { useState } from 'react'
-import { Check, FolderGit2, FolderPlus, GitBranch, KeyRound, Puzzle, Search, ShieldPlus } from 'lucide-react'
+import {
+  Check,
+  FolderGit2,
+  FolderPlus,
+  GitBranch,
+  KeyRound,
+  Puzzle,
+  RefreshCw,
+  Search,
+  ShieldPlus
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -7,11 +17,11 @@ import { searchShortcut } from '@/components/CommandPalette'
 import { useAskVault } from '@/components/VaultProvider'
 import { api } from '@/lib/api'
 import { ClaudeIcon } from '@/lib/brandIcons'
-import { useAction, useVaultStatus } from '@/lib/queries'
+import { useAction, useSettings, useVaultStatus } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import logo from '@claude-launcher/design-tokens/logo.svg'
 
-const STEPS = ['welcome', 'project', 'repo', 'vault', 'launch']
+const STEPS = ['welcome', 'project', 'repo', 'vault', 'updates', 'launch']
 
 // Tutorial guiado: cada paso se puede hacer desde aquí mismo o saltarse.
 export function Onboarding({ open, onOpenChange, projects, onSelect }) {
@@ -38,6 +48,7 @@ export function Onboarding({ open, onOpenChange, projects, onSelect }) {
         {STEPS[step] === 'project' && <ProjectStep project={project} onCreated={setProjectId} />}
         {STEPS[step] === 'repo' && <RepoStep project={project} />}
         {STEPS[step] === 'vault' && <VaultStep onHide={setHidden} />}
+        {STEPS[step] === 'updates' && <UpdatesStep />}
         {STEPS[step] === 'launch' && <LaunchStep />}
         <DialogFooter className="items-center sm:justify-between">
           <Button variant="ghost" className={cn('text-muted-foreground', last && 'invisible')} onClick={close}>
@@ -96,7 +107,7 @@ function Welcome() {
         <img src={logo} alt="" className="mb-2 size-14" />
         <DialogTitle>Te damos la bienvenida a Claude Launcher</DialogTitle>
         <DialogDescription>
-          En cuatro pasos tendrás tu primer proyecto listo para abrir Claude Code con sus variables de entorno.
+          En pocos pasos tendrás tu primer proyecto listo para abrir Claude Code con sus variables de entorno.
         </DialogDescription>
       </DialogHeader>
       <ul className="grid gap-2 text-sm">
@@ -214,6 +225,34 @@ function VaultStep({ onHide }) {
       )}
       <p className="text-xs text-muted-foreground">
         Puedes usar un .kdbx que ya tengas. La bóveda se bloquea sola tras 15 minutos de inactividad.
+      </p>
+    </Step>
+  )
+}
+
+function UpdatesStep() {
+  const { data: settings } = useSettings()
+  const save = useAction(api.settings.set)
+
+  return (
+    <Step
+      icon={RefreshCw}
+      title="Mantén la app al día"
+      description="Al abrirla, la app puede consultar en GitHub si hay una versión nueva y avisarte. No envía ningún dato tuyo."
+    >
+      <label className="flex items-center gap-2 rounded-md bg-card px-3 py-2 text-sm">
+        <input
+          type="checkbox"
+          className="size-4 accent-primary"
+          checked={settings?.updates.checkOnStartup ?? true}
+          disabled={!settings || save.isPending}
+          onChange={(e) => save.mutate({ updates: { checkOnStartup: e.target.checked } })}
+        />
+        Buscar actualizaciones al abrir la app
+      </label>
+      <p className="text-xs text-muted-foreground">
+        Puedes cambiarlo en «Configuración → Actualizaciones» o buscar a mano con el botón junto a la
+        versión, abajo en la barra lateral.
       </p>
     </Step>
   )

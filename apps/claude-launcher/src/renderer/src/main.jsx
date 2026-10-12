@@ -8,6 +8,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { VaultProvider } from '@/components/VaultProvider'
 import { ExtensionBridge } from '@/components/ExtensionBridge'
 import { DevelopDialog } from '@/components/DevelopDialog'
+import { UpdateProvider } from '@/components/UpdateProvider'
 import { errMsg } from '@/lib/api'
 import App from './App'
 
@@ -36,9 +37,11 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <VaultProvider>
-        <App />
-        <ExtensionBridge />
-        <DevelopDialog />
+        <UpdateProvider>
+          <App />
+          <ExtensionBridge />
+          <DevelopDialog />
+        </UpdateProvider>
       </VaultProvider>
       <Toaster theme="dark" position="bottom-right" />
     </QueryClientProvider>

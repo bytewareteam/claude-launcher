@@ -1,8 +1,19 @@
 import { useState } from 'react'
-import { Coffee, House, KeyRound, PanelLeftClose, Plus, Search, Settings } from 'lucide-react'
+import {
+  ArrowUpCircle,
+  Coffee,
+  House,
+  KeyRound,
+  PanelLeftClose,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings
+} from 'lucide-react'
 import { isMac, searchShortcut } from '@/components/CommandPalette'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useUpdates } from '@/components/UpdateProvider'
 import {
   Dialog,
   DialogContent,
@@ -38,6 +49,7 @@ export function Sidebar({
   newProjectOpen,
   onNewProjectOpenChange
 }) {
+  const updates = useUpdates()
   return (
     <aside className="flex h-full w-[260px] flex-col border-r bg-sidebar">
       <header className="flex items-center gap-2 py-3 pr-2 pl-4 font-bold tracking-wide text-primary">
@@ -104,7 +116,29 @@ export function Sidebar({
           </span>
         </button>
         <div className="flex items-center gap-1 px-3 pt-1 text-xs text-muted-foreground">
-          <span className="mr-auto">v{version}</span>
+          <span>v{version}</span>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            title="Buscar actualizaciones"
+            disabled={updates.checking}
+            onClick={() => updates.check()}
+          >
+            <RefreshCw className={cn(updates.checking && 'animate-spin')} />
+          </Button>
+          <span className="mr-auto">
+            {updates.info?.available && (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-primary"
+                title={`Actualizar a la v${updates.info.latest}`}
+                onClick={updates.show}
+              >
+                <ArrowUpCircle /> v{updates.info.latest}
+              </Button>
+            )}
+          </span>
           {/* Los enlaces con target _blank los abre el navegador (setWindowOpenHandler). */}
           <Button variant="ghost" size="icon-xs" asChild title="Código en GitHub">
             <a href="https://github.com/bytewareteam/claude-launcher" target="_blank" rel="noreferrer">

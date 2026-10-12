@@ -38,7 +38,7 @@ export const NO_CWD_EXE = { NoDefaultCurrentDirectoryInExePath: '1' }
 // Cada uno se busca en el PATH del sistema salvo que la Configuración fije su ruta.
 // `exe`: se lanza sin shell (o es la propia shell), así que no puede ser un .cmd/.bat.
 
-const SYSTEM_PATH = process.env.PATH || ''
+export const SYSTEM_PATH = process.env.PATH || ''
 
 export const BINARIES = {
   claude: { file: 'claude' },
