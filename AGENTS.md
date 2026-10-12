@@ -110,6 +110,7 @@ src/
     terminal.js  Lanza `wt.exe … claude` con un entorno filtrado.
     dev.js       «Iniciar desarrollo»: ruta del worktree, instalación de dependencias y contexto para Claude.
     mcp.js       Servidor MCP (Streamable HTTP, sin sesiones) en 127.0.0.1 con token; sus herramientas usan `mcpApp` de index.js.
+    updater.js   Busca la última release en GitHub y actualiza el .exe portable (sha256 verificado, sustitución al cerrar).
     extensions.js       Instala/desinstala extensiones, guarda su consentimiento y las arranca.
     extension-packages.js  Catálogo remoto, descarga verificada (sha256) y extracción segura de .zip.
     extension-host.js   Corre dentro del utilityProcess de cada extensión (entrada aparte de Vite).

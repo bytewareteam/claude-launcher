@@ -53,6 +53,12 @@ contextBridge.exposeInMainWorld('api', {
     status: invoke('mcp:status'),
     regenerateToken: invoke('mcp:regenerateToken')
   },
+  updates: {
+    check: invoke('updates:check'),
+    install: invoke('updates:install'),
+    failed: invoke('updates:failed'),
+    onProgress: on('updates:progress')
+  },
   onboarding: {
     pending: invoke('onboarding:pending'),
     done: invoke('onboarding:done')
