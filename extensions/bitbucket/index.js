@@ -14,6 +14,9 @@ function timeAgo(iso) {
   return rtf.format(Math.round(days / 365), 'year')
 }
 
+// El workspace/proyecto no existe o no tenemos acceso: la API responde 404 o 403.
+const isNotFound = (err) => /(403|404)|Not Found|Forbidden/i.test(err.message)
+
 const fail = (text) => ({
   view: {
     actions: [{ id: 'refresh', label: 'Recargar', icon: 'refresh' }],
@@ -41,7 +44,9 @@ exports.activate = (ctx) => {
           ...Object.entries(query).flatMap(([k, v]) => ['--param', `${k}=${v}`])
         )
       )
-      values.push(...(res.values || []))
+      // Sin `values` no es una página: mejor un error que una lista vacía engañosa.
+      if (!Array.isArray(res.values)) throw new Error(`Respuesta inesperada de ${path}.`)
+      values.push(...res.values)
       if (c.kind === 'cloud') {
         if (!res.next) break
         url = res.next
@@ -175,7 +180,13 @@ exports.activate = (ctx) => {
             }
           ]
         }
-      const repos = await listRepos(c, scope)
+      let repos
+      try {
+        repos = await listRepos(c, scope)
+      } catch (err) {
+        if (!isNotFound(err)) throw err
+        return unreachable(c, scope, actions, err)
+      }
       return {
         description: `Repositorios del ${unit(c)} ${scope} en Bitbucket (${c.baseUrl}). Clona uno y añádelo a un proyecto.`,
         actions,
@@ -216,6 +227,7 @@ exports.activate = (ctx) => {
       if (id === 'open') return ctx.ui.openExternal(args.url)
       if (id === 'context') return chooseContext()
       if (id === 'scope') return chooseScope()
+      if (id === 'useScope') return ctx.storage.set(`scope:${args.context}`, args.scope)
       if (id === 'protocol') return ctx.storage.set('ssh', !(await ctx.storage.get('ssh')))
       if (id === 'clone') return clone(args, context.project)
     }
@@ -235,14 +247,61 @@ exports.activate = (ctx) => {
     if (name) await ctx.storage.set('context', name)
   }
 
+  // Vista para un workspace/proyecto inaccesible (p. ej. el del contexto de bkt no existe):
+  // explica el error y ofrece los que sí son accesibles, sin pasar por el selector.
+  async function unreachable(c, scope, actions, err) {
+    console.error(err.message)
+    const blocks = [
+      {
+        type: 'text',
+        text: `No se puede acceder al ${unit(c)} ${scope} en ${c.baseUrl}: no existe o no tienes permiso. Elige otro.`,
+        tone: 'error'
+      }
+    ]
+    try {
+      const items = await listScopes(c)
+      blocks.push({
+        type: 'list',
+        searchable: items.length > 10,
+        empty: `No tienes acceso a ningún ${unit(c)} en ${c.baseUrl}.`,
+        items: items.map((s) => ({
+          id: s.id,
+          title: s.label,
+          description: s.description,
+          actions: [
+            { id: 'useScope', label: 'Usar', icon: 'users', args: { context: c.name, scope: s.id } }
+          ]
+        }))
+      })
+    } catch (listErr) {
+      blocks.push({
+        type: 'text',
+        text: `Tampoco se pudo obtener la lista de ${unit(c)}s: ${listErr.message}`,
+        tone: 'error'
+      })
+    }
+    return { actions, blocks }
+  }
+
   async function chooseScope() {
     const { view, c } = await current()
     if (view) return
+    const items = await listScopes(c)
+    if (!items.length) throw new Error(`No tienes acceso a ningún ${unit(c)} en ${c.baseUrl}.`)
+    const scope = await ctx.ui.quickPick(items, { placeholder: 'Ver los repositorios de…' })
+    if (scope) await ctx.storage.set(`scope:${c.name}`, scope)
+  }
+
+  // Workspaces (Cloud) o proyectos (Data Center) accesibles, ordenados por nombre.
+  async function listScopes(c) {
     let items
     if (c.kind === 'cloud') {
-      // /user/workspaces sustituye a /workspaces, que Atlassian está retirando.
-      const values = await paginate(c, '/user/workspaces', { pagelen: 100 }).catch(() =>
-        paginate(c, '/workspaces', { pagelen: 100 })
+      // /user/workspaces sustituye a /workspaces, que Atlassian está retirando. Si ambos fallan,
+      // el error útil es el del primero.
+      const values = await paginate(c, '/user/workspaces', { pagelen: 100 }).catch((err) =>
+        paginate(c, '/workspaces', { pagelen: 100 }).catch(() => {
+          throw err
+        })
       )
       items = values
         .map((v) => v.workspace || v)
@@ -255,10 +314,7 @@ exports.activate = (ctx) => {
       const values = await paginate(c, '/rest/api/1.0/projects', { limit: 1000 })
       items = values.map((p) => ({ id: p.key, label: p.name, description: p.key }))
     }
-    if (!items.length) throw new Error(`No tienes acceso a ningún ${unit(c)} en ${c.baseUrl}.`)
-    items.sort((a, b) => a.label.localeCompare(b.label))
-    const scope = await ctx.ui.quickPick(items, { placeholder: 'Ver los repositorios de…' })
-    if (scope) await ctx.storage.set(`scope:${c.name}`, scope)
+    return items.sort((a, b) => a.label.localeCompare(b.label))
   }
 
   async function clone({ slug, name }, target) {
