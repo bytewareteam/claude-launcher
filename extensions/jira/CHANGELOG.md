@@ -1,3 +1,13 @@
+## 0.1.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **jira:** elegir el equipo (tablero) cuyas métricas se muestran ([ca01266](https://github.com/bytewareteam/claude-launcher/commit/ca01266))
+
+### ❤️ Thank You
+
+- Willian Monoga @bytewareteam
+
 ## 0.1.0 (2026-10-11)
 
 ### 🚀 Features

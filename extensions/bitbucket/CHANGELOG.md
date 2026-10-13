@@ -1,3 +1,13 @@
+## 0.1.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **bitbucket:** ofrecer los workspaces accesibles si el del contexto no existe ([#36](https://github.com/bytewareteam/claude-launcher/pull/36), [#35](https://github.com/bytewareteam/claude-launcher/issues/35))
+
+### ❤️ Thank You
+
+- Willian Monoga @bytewareteam
+
 ## 0.1.0 (2026-10-11)
 
 ### 🚀 Features

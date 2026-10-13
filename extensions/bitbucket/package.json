@@ -1,7 +1,7 @@
 {
   "name": "bitbucket",
   "displayName": "Bitbucket",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lista los repositorios de tus workspaces de Bitbucket Cloud o proyectos de Bitbucket Data Center (vía bkt) y clónalos donde quieras.",
   "main": "index.js",
   "private": true,
