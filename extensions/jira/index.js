@@ -165,6 +165,12 @@ const hasText = (adf) => /\S/.test(toMarkdown(adf))
 
 const refresh = { id: 'refresh', icon: 'refresh', title: 'Sincronizar con Jira' }
 const linkAction = { id: 'link', label: 'Vincular proyecto', icon: 'link' }
+const teamAction = (link) => ({
+  id: 'team',
+  label: link?.team?.name ?? 'Todos los equipos',
+  icon: 'users',
+  title: 'Elegir equipo'
+})
 
 const connectAction = { id: 'connect', label: 'Conectar con Jira', icon: 'link' }
 
@@ -279,6 +285,49 @@ exports.activate = (ctx) => {
     }
   }
 
+  // Tableros (Jira Software) que muestran incidencias del proyecto: uno por equipo.
+  async function boards(key) {
+    const all = []
+    for (let startAt = 0; ; startAt += 50) {
+      const res = await api(
+        `/rest/agile/1.0/board?projectKeyOrId=${enc(key)}&maxResults=50&startAt=${startAt}`
+      )
+      all.push(...res.values)
+      if (res.isLast || !res.values.length) return all
+    }
+  }
+
+  // Equipo = tablero: se guarda su filtro para acotar las búsquedas JQL a lo que muestra el
+  // tablero. `null` es «todos los equipos» y `undefined`, que se canceló.
+  async function pickTeam(list, current) {
+    if (!list.length) return null
+    const id = await ctx.ui.quickPick(
+      [
+        { id: 'all', label: 'Todos los equipos', description: 'Todo el proyecto' },
+        ...list
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((b) => ({
+            id: String(b.id),
+            label: b.name,
+            description: b.id === current?.id ? 'actual' : b.type
+          }))
+      ],
+      { placeholder: 'Equipo (tablero) cuyas métricas quieres ver…' }
+    )
+    if (!id) return undefined
+    if (id === 'all') return null
+    const { name } = list.find((b) => String(b.id) === id)
+    const { filter } = await api(`/rest/agile/1.0/board/${enc(id)}/configuration`)
+    if (!filter?.id) throw new Error(`No se pudo leer el filtro del tablero «${name}».`)
+    return { id: Number(id), name, filter: String(filter.id) }
+  }
+
+  async function saveLink(project, link) {
+    await ctx.storage.set(linkKey(project.id), link)
+    openIssue.delete(project.id)
+    forget(`${project.id}:`)
+  }
+
   async function chooseLink(project) {
     const list = await projects()
     if (!list.length) throw new Error('Tu cuenta de Jira no ve ningún proyecto.')
@@ -288,10 +337,21 @@ exports.activate = (ctx) => {
     )
     if (!key) return
     const { name } = list.find((p) => p.key === key)
-    await ctx.storage.set(linkKey(project.id), { key, name })
-    openIssue.delete(project.id)
-    forget(`${project.id}:`)
-    return { toast: `«${project.name}» vinculado a ${name} (${key}).` }
+    const team = await pickTeam(await boards(key))
+    if (team === undefined) return
+    await saveLink(project, { key, name, team })
+    const scope = team ? `, equipo ${team.name}` : ''
+    return { toast: `«${project.name}» vinculado a ${name} (${key}${scope}).` }
+  }
+
+  async function chooseTeam(project) {
+    const link = await linkOf(project)
+    if (!link) return
+    const list = await boards(link.key)
+    if (!list.length) return { toast: `${link.key} no tiene tableros de equipo en Jira.` }
+    const team = await pickTeam(list, link.team)
+    if (team === undefined) return
+    await saveLink(project, { ...link, team })
   }
 
   // --- Datos de Jira ------------------------------------------------------------------------
@@ -337,13 +397,14 @@ exports.activate = (ctx) => {
     return issues.map((raw) => issue(raw, site))
   }
 
-  // Sprint activo y mis incidencias abiertas del proyecto vinculado.
+  // Sprint activo y mis incidencias abiertas del proyecto vinculado, o solo de lo que muestra
+  // el tablero del equipo elegido.
   async function fetchBoard(link) {
-    const project = `project = ${jql(link.key)}`
+    const scope = link.team ? `filter = ${link.team.filter}` : `project = ${jql(link.key)}`
     const [sprint, mine] = await Promise.all([
-      search(`${project} AND sprint in openSprints() ORDER BY rank`),
+      search(`${scope} AND sprint in openSprints() ORDER BY rank`),
       search(
-        `${project} AND assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC`,
+        `${scope} AND assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC`,
         100
       )
     ])
@@ -563,15 +624,21 @@ exports.activate = (ctx) => {
     const data = await load(project)
     if (!data) return unlinked
     const { link, sprint, mine, syncedAt } = data
+    const url = link.team
+      ? `https://${site}/secure/RapidBoard.jspa?rapidView=${link.team.id}`
+      : `https://${site}/browse/${link.key}`
     return {
-      description: `${link.name} (${link.key}) · ${email} · sincronizado ${ago(syncedAt)}`,
+      description: [
+        `${link.name} (${link.key})`,
+        link.team?.name,
+        email,
+        `sincronizado ${ago(syncedAt)}`
+      ]
+        .filter(Boolean)
+        .join(' · '),
       actions: [
-        {
-          id: 'open',
-          label: 'Abrir en Jira',
-          icon: 'external-link',
-          args: { url: `https://${site}/browse/${link.key}` }
-        },
+        teamAction(link),
+        { id: 'open', label: 'Abrir en Jira', icon: 'external-link', args: { url } },
         { id: 'goto', icon: 'list-todo', title: 'Abrir una incidencia por clave' },
         { id: 'link', icon: 'link', title: 'Vincular a otro proyecto de Jira' },
         { id: 'disconnect', icon: 'lock', title: 'Desconectar de Jira (borra el token)' },
@@ -749,6 +816,7 @@ exports.activate = (ctx) => {
     if (id === 'back') return void openIssue.delete(project.id)
     if (id === 'goto') return goto(project)
     if (id === 'link') return chooseLink(project)
+    if (id === 'team') return chooseTeam(project)
     if (id === 'refresh') forget(`${project.id}:`)
   }
 
@@ -778,7 +846,12 @@ exports.activate = (ctx) => {
       }
       console.error(err.message)
       return {
-        actions: [linkAction, connectAction, refresh],
+        actions: [
+          { id: 'team', icon: 'users', title: 'Elegir equipo' },
+          linkAction,
+          connectAction,
+          refresh
+        ],
         blocks: [{ type: 'text', tone: 'error', text: err.message }]
       }
     }
