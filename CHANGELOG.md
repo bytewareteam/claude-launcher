@@ -1,3 +1,16 @@
+## 1.6.0 (2026-10-22)
+
+### 🚀 Features
+
+- comprobar y aplicar actualizaciones de la app ([#34](https://github.com/bytewareteam/claude-launcher/pull/34))
+- versión de la app y enlaces a GitHub y Buy Me a Coffee en el menú lateral ([#33](https://github.com/bytewareteam/claude-launcher/pull/33))
+- menú lateral plegable y sin buscador de proyectos ([#32](https://github.com/bytewareteam/claude-launcher/pull/32))
+- sección Bóveda para contraseñas, credenciales, llaves SSH y secretos personales ([#31](https://github.com/bytewareteam/claude-launcher/pull/31))
+
+### ❤️ Thank You
+
+- Willian Monoga @bytewareteam
+
 ## 1.5.0 (2026-10-11)
 
 ### 🚀 Features
