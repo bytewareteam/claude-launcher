@@ -1,5 +1,5 @@
-// Extensión de Jira: pestaña «Jira» en cada proyecto con el sprint activo y tus incidencias de un
-// proyecto de Jira Cloud, vía su API REST. El token de API lo guarda cifrado la app (permiso
+// Extensión de Jira: pestaña «Jira» en cada proyecto con el tablero (el sprint activo, o el flujo
+// continuo en Kanban) y tus incidencias de un proyecto de Jira Cloud, vía su API REST. El token de API lo guarda cifrado la app (permiso
 // `secrets`); el sitio y el email, el almacenamiento normal de la extensión.
 // «Iniciar desarrollo» pide a la app un worktree y una sesión de Claude con la incidencia como
 // contexto (permiso `develop`).
@@ -15,6 +15,9 @@ const TOKENS_URL = 'https://id.atlassian.com/manage-profile/security/api-tokens'
 // Categorías de estado de Jira → tono de la app y orden de las columnas.
 const CATEGORIES = { new: 'muted', indeterminate: 'info', done: 'success' }
 const RANK = { new: 0, indeterminate: 1, done: 2 }
+
+// Sin sprints ni sub-filtro del tablero, lo hecho solo se ve las dos semanas siguientes.
+const RECENT = 'statusCategory != Done OR statusCategoryChangedDate >= -14d'
 
 const KEY = /^[A-Z][A-Z0-9_]*-\d+$/
 const jql = (s) => `"${String(s).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
@@ -285,20 +288,70 @@ exports.activate = (ctx) => {
     }
   }
 
-  // Tableros (Jira Software) que muestran incidencias del proyecto: uno por equipo.
+  // Tableros (Jira Software) que muestran incidencias del proyecto: uno por equipo. Los proyectos
+  // de negocio o de Service Management no tienen, y sin licencia de Software la API los rechaza.
   async function boards(key) {
     const all = []
-    for (let startAt = 0; ; startAt += 50) {
-      const res = await api(
-        `/rest/agile/1.0/board?projectKeyOrId=${enc(key)}&maxResults=50&startAt=${startAt}`
-      )
-      all.push(...res.values)
-      if (res.isLast || !res.values.length) return all
+    try {
+      for (let startAt = 0; ; startAt += 50) {
+        const res = await api(
+          `/rest/agile/1.0/board?projectKeyOrId=${enc(key)}&maxResults=50&startAt=${startAt}`
+        )
+        all.push(...res.values)
+        if (res.isLast || !res.values.length) return all
+      }
+    } catch (err) {
+      if (err instanceof AuthError) throw err
+      console.error(err.message)
+      return []
     }
   }
 
-  // Equipo = tablero: se guarda su filtro para acotar las búsquedas JQL a lo que muestra el
-  // tablero. `null` es «todos los equipos» y `undefined`, que se canceló.
+  // Funciones activadas en el tablero. Los tableros simples (proyectos gestionados por el equipo)
+  // tienen sprints o no según esto; si la API falla, se deduce del tipo.
+  async function features({ id, type }) {
+    try {
+      const { features = [] } = await api(`/rest/agile/1.0/board/${enc(id)}/features`)
+      const on = (name) => features.some((f) => f.boardFeature === name && f.state === 'ENABLED')
+      return { sprints: on('SPRINTS'), backlog: on('BACKLOG') }
+    } catch (err) {
+      if (err instanceof AuthError) throw err
+      return { sprints: type === 'scrum', backlog: type === 'scrum' }
+    }
+  }
+
+  // Cómo trabaja el equipo elegido: con sprints o en flujo continuo, y las columnas, el filtro y
+  // el sub-filtro (Kanban) de su tablero. Se lee en cada sincronización por si cambian en Jira.
+  async function boardSetup(team) {
+    const config = await api(`/rest/agile/1.0/board/${enc(team.id)}/configuration`)
+    if (!config.filter?.id) throw new Error(`No se pudo leer el filtro del tablero «${team.name}».`)
+    const { sprints, backlog } = await features({ id: team.id, type: config.type })
+    let columns = (config.columnConfig?.columns ?? [])
+      .map((c) => ({ name: c.name, statuses: (c.statuses ?? []).map((st) => String(st.id)) }))
+      .filter((c) => c.statuses.length)
+    // Con el backlog de Kanban activado, la primera columna es el backlog y no sale en el tablero.
+    if (config.type === 'kanban' && backlog) columns = columns.slice(1)
+    return {
+      sprints,
+      columns: columns.length ? columns : null,
+      scope: `filter = ${config.filter.id}`,
+      subQuery: config.subQuery?.query
+    }
+  }
+
+  // «Todos los equipos»: con sprints si algún tablero del proyecto los usa.
+  async function projectSetup(key) {
+    const list = await boards(key)
+    const flags = await Promise.all(
+      list.map(
+        (b) => b.type === 'scrum' || (b.type === 'simple' && features(b).then((f) => f.sprints))
+      )
+    )
+    return { sprints: flags.some(Boolean), scope: `project = ${jql(key)}`, boardless: !list.length }
+  }
+
+  // Equipo = tablero: su filtro acota las búsquedas JQL a lo que muestra (ver `boardSetup`).
+  // `null` es «todos los equipos» y `undefined`, que se canceló.
   async function pickTeam(list, current) {
     if (!list.length) return null
     const id = await ctx.ui.quickPick(
@@ -317,9 +370,7 @@ exports.activate = (ctx) => {
     if (!id) return undefined
     if (id === 'all') return null
     const { name } = list.find((b) => String(b.id) === id)
-    const { filter } = await api(`/rest/agile/1.0/board/${enc(id)}/configuration`)
-    if (!filter?.id) throw new Error(`No se pudo leer el filtro del tablero «${name}».`)
-    return { id: Number(id), name, filter: String(filter.id) }
+    return { id: Number(id), name }
   }
 
   async function saveLink(project, link) {
@@ -366,6 +417,7 @@ exports.activate = (ctx) => {
       type: f.issuetype?.name ?? 'Incidencia',
       subtask: Boolean(f.issuetype?.subtask),
       state: f.status?.name ?? '—',
+      statusId: f.status?.id,
       category,
       tone: CATEGORIES[category] ?? 'muted',
       assignee: f.assignee?.displayName,
@@ -397,18 +449,25 @@ exports.activate = (ctx) => {
     return issues.map((raw) => issue(raw, site))
   }
 
-  // Sprint activo y mis incidencias abiertas del proyecto vinculado, o solo de lo que muestra
-  // el tablero del equipo elegido.
+  // Tablero (sprint activo, o lo abierto y lo hecho reciente en flujo continuo) y mis incidencias
+  // abiertas del proyecto vinculado, o solo de lo que muestra el tablero del equipo elegido.
   async function fetchBoard(link) {
-    const scope = link.team ? `filter = ${link.team.filter}` : `project = ${jql(link.key)}`
-    const [sprint, mine] = await Promise.all([
-      search(`${scope} AND sprint in openSprints() ORDER BY rank`),
+    const setup = link.team ? await boardSetup(link.team) : await projectSetup(link.key)
+    const { scope, sprints, columns } = setup
+    const shown = sprints ? 'sprint in openSprints()' : `(${setup.subQuery || RECENT})`
+    // Los proyectos sin tablero (Work Management) pueden no ordenar por rango.
+    const order = setup.boardless ? 'updated DESC' : 'rank'
+    const [all, mine] = await Promise.all([
+      search(`${scope} AND ${shown} ORDER BY ${order}`),
       search(
         `${scope} AND assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC`,
         100
       )
     ])
-    return { link, sprint, mine }
+    // Lo que no está en ninguna columna tampoco sale en el tablero de Jira.
+    const mapped = columns && new Set(columns.flatMap((c) => c.statuses))
+    const board = mapped ? all.filter((it) => mapped.has(String(it.statusId))) : all
+    return { link, sprints, columns, board, mine }
   }
 
   async function load(project) {
@@ -509,68 +568,89 @@ exports.activate = (ctx) => {
       .map(({ category, ...c }) => c)
   }
 
-  // Columnas por estado, ordenadas por categoría (por hacer → en curso → hecho). Las subtareas
-  // van dentro de su padre cuando también está en el sprint.
-  function kanban(list) {
+  // Columnas por estado, ordenadas por categoría (por hacer → en curso → hecho).
+  function byState(cards) {
+    const states = new Map()
+    for (const it of cards)
+      if (!states.has(it.state))
+        states.set(it.state, { tone: it.tone, rank: RANK[it.category] ?? 1 })
+    return [...states]
+      .sort(([, a], [, b]) => a.rank - b.rank)
+      .map(([state, { tone }]) => ({ title: state, tone, has: (it) => it.state === state }))
+  }
+
+  // Columnas del tablero del equipo o, sin él, una por estado. Las subtareas van dentro de su
+  // padre cuando también está en el tablero.
+  function kanban(list, columns, empty) {
     const keys = new Set(list.map((it) => it.key))
     const nested = (it) => it.subtask && keys.has(it.parent?.key)
     const subtasksOf = new Map()
     for (const it of list.filter(nested))
       subtasksOf.set(it.parent.key, [...(subtasksOf.get(it.parent.key) ?? []), it])
     const cards = list.filter((it) => !nested(it))
-    const states = new Map()
-    for (const it of cards)
-      if (!states.has(it.state))
-        states.set(it.state, { tone: it.tone, rank: RANK[it.category] ?? 1 })
+    // Como en Jira, la última columna del tablero es la de hecho.
+    const lanes = columns
+      ? columns.map((c, i) => ({
+          title: c.name,
+          tone: i === columns.length - 1 ? 'success' : i ? 'info' : 'muted',
+          has: (it) => c.statuses.includes(String(it.statusId))
+        }))
+      : byState(cards)
     return {
       type: 'kanban',
       filter: { label: 'Asignado a', all: 'Todas las personas' },
-      empty: 'No hay incidencias en el sprint activo.',
-      columns: [...states]
-        .sort(([, a], [, b]) => a.rank - b.rank)
-        .map(([state, { tone }]) => ({
-          id: state,
-          title: state,
-          tone,
-          items: cards
-            .filter((it) => it.state === state)
-            .map((it) => {
-              const subtasks = subtasksOf.get(it.key) ?? []
-              return {
-                id: it.key,
-                title: `${it.key} ${it.title}`,
-                description: ownerOf(it),
-                meta: [it.type, it.parent && `en ${it.parent.key}`].filter(Boolean).join(' · '),
-                ...(subtasks.length && {
-                  breakdown: progress(subtasks),
-                  childrenLabel: `Subtareas (${subtasks.length})`,
-                  children: subtasks.map((t) => ({ ...row(t), filterValues: [ownerOf(t)] }))
-                }),
-                // Se filtra por el responsable y por los de sus subtareas.
-                filterValues: [...new Set([ownerOf(it), ...subtasks.map(ownerOf)])],
-                action: { id: 'issue', args: { key: it.key } },
-                actions: developActions(it)
-              }
-            })
-        }))
+      empty,
+      columns: lanes.map(({ title, tone, has }) => ({
+        id: title,
+        title,
+        tone,
+        items: cards.filter(has).map((it) => {
+          const subtasks = subtasksOf.get(it.key) ?? []
+          return {
+            id: it.key,
+            title: `${it.key} ${it.title}`,
+            description: ownerOf(it),
+            meta: [it.type, it.parent && `en ${it.parent.key}`].filter(Boolean).join(' · '),
+            ...(subtasks.length && {
+              breakdown: progress(subtasks),
+              childrenLabel: `Subtareas (${subtasks.length})`,
+              children: subtasks.map((t) => ({ ...row(t), filterValues: [ownerOf(t)] }))
+            }),
+            // Se filtra por el responsable y por los de sus subtareas.
+            filterValues: [...new Set([ownerOf(it), ...subtasks.map(ownerOf)])],
+            action: { id: 'issue', args: { key: it.key } },
+            actions: developActions(it)
+          }
+        })
+      }))
     }
   }
 
-  // Recuento por categoría de estado para las cifras de arriba.
-  function stats(sprint, mine) {
-    const count = (cat) => sprint.filter((it) => it.category === cat).length
+  // Recuento por categoría de estado para las cifras de arriba. Sin sprints no hay un total que
+  // completar: lo hecho es lo reciente que aún muestra el tablero.
+  function stats(sprints, board, mine) {
+    const count = (cat) => board.filter((it) => it.category === cat).length
     const done = count('done')
+    const progress = sprints
+      ? [
+          {
+            label: 'Hechas en el sprint',
+            value: `${done}/${board.length}`,
+            progress: board.length ? done / board.length : 0,
+            tone: 'success'
+          },
+          { label: 'En curso', value: count('indeterminate'), tone: 'info' },
+          { label: 'Por hacer', value: count('new') }
+        ]
+      : [
+          { label: 'Por hacer', value: count('new') },
+          { label: 'En curso', value: count('indeterminate'), tone: 'info' },
+          { label: 'Hechas recientes', value: done, tone: 'success' }
+        ]
     return {
       type: 'stats',
       items: [
-        {
-          label: 'Hechas en el sprint',
-          value: `${done}/${sprint.length}`,
-          progress: sprint.length ? done / sprint.length : 0,
-          tone: 'success'
-        },
-        { label: 'En curso', value: count('indeterminate'), tone: 'info' },
-        { label: 'Por hacer', value: count('new') },
+        ...progress,
         {
           label: 'Mis incidencias abiertas',
           value: mine.length,
@@ -594,7 +674,7 @@ exports.activate = (ctx) => {
       {
         type: 'text',
         tone: 'muted',
-        text: 'Este proyecto no está vinculado a ningún proyecto de Jira.\nVincúlalo para ver su sprint activo y tus incidencias.'
+        text: 'Este proyecto no está vinculado a ningún proyecto de Jira.\nVincúlalo para ver su tablero y tus incidencias.'
       }
     ]
   }
@@ -623,7 +703,7 @@ exports.activate = (ctx) => {
     const { site, email } = await credentials()
     const data = await load(project)
     if (!data) return unlinked
-    const { link, sprint, mine, syncedAt } = data
+    const { link, sprints, columns, board, mine, syncedAt } = data
     const url = link.team
       ? `https://${site}/secure/RapidBoard.jspa?rapidView=${link.team.id}`
       : `https://${site}/browse/${link.key}`
@@ -631,6 +711,7 @@ exports.activate = (ctx) => {
       description: [
         `${link.name} (${link.key})`,
         link.team?.name,
+        sprints ? 'con sprints' : 'flujo continuo',
         email,
         `sincronizado ${ago(syncedAt)}`
       ]
@@ -645,11 +726,21 @@ exports.activate = (ctx) => {
         refresh
       ],
       blocks: [
-        stats(sprint, mine),
+        stats(sprints, board, mine),
         {
           type: 'tabs',
           tabs: [
-            { id: 'sprint', label: `Sprint activo (${sprint.length})`, blocks: [kanban(sprint)] },
+            sprints
+              ? {
+                  id: 'sprint',
+                  label: `Sprint activo (${board.length})`,
+                  blocks: [kanban(board, columns, 'No hay incidencias en el sprint activo.')]
+                }
+              : {
+                  id: 'board',
+                  label: `Tablero (${board.length})`,
+                  blocks: [kanban(board, columns, 'No hay incidencias en el tablero.')]
+                },
             {
               id: 'mine',
               label: `Mis incidencias (${mine.length})`,
@@ -789,7 +880,7 @@ exports.activate = (ctx) => {
     })
   }
 
-  // Abre cualquier incidencia escribiendo su clave (p. ej. una que no está en el sprint).
+  // Abre cualquier incidencia escribiendo su clave (p. ej. una que no está en el tablero).
   async function goto(project) {
     const link = await linkOf(project)
     const key = (
